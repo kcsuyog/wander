@@ -3,9 +3,11 @@
 A tiny web app for tracking places you've **visited** and places you **dream of visiting**,
 grouped by city (Sydney, Melbourne, Tokyo, …).
 
+**→ Live: <https://kcsuyog.github.io/wander/>** (free GitHub Pages hosting, deploys on every push to `main`)
+
 ## Run it
 
-No build step, no dependencies — just open `index.html` in a browser:
+No build step, no dependencies — just open `index.html` in a browser, or use the live site:
 
 ```sh
 open index.html                       # macOS
