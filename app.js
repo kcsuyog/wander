@@ -114,9 +114,9 @@ function MapPreview({ p }) {
   const fx = x - Math.floor(x);
   const fy = y - Math.floor(y);
   const tile = `https://tile.openstreetmap.org/${z}/${Math.floor(x)}/${Math.floor(y)}.png`;
-  const osm = `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#${z}/${p.lat}/${p.lon}`;
+  const gmaps = `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`;
   return html`
-    <a class="map" href=${osm} target="_blank" rel="noopener" title="open in OpenStreetMap">
+    <a class="map" href=${gmaps} target="_blank" rel="noopener" title="open in Google Maps">
       <img src=${tile} alt=${`little map of ${p.name}`} loading="lazy" width="256" height="256"
         style=${{ left: `calc(50% - ${(fx * 256).toFixed(1)}px)`, top: `calc(54px - ${(fy * 256).toFixed(1)}px)` }} />
       <span class="pin" aria-hidden="true">📍</span>
@@ -662,7 +662,7 @@ function MapView({ places, act }) {
                   ? html`<button type="button" class="btn mini" onClick=${() => act.photo(picked.id, 0)}>📷 photos</button>` : null}
                 <button type="button" class="btn mini" onClick=${() => act.edit(picked.id)}>✏️ edit</button>
                 <a class="btn mini" target="_blank" rel="noopener"
-                  href=${`https://www.openstreetmap.org/?mlat=${picked.lat}&mlon=${picked.lon}#${view.z}/${picked.lat}/${picked.lon}`}>↗ osm</a>
+                  href=${`https://www.google.com/maps/search/?api=1&query=${picked.lat},${picked.lon}`}>↗ google maps</a>
               </div>
             </div>
           </div>` : null}
