@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wander · my little places</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪶</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="top">
+    <div class="brand">
+      <h1>🪶 Wander</h1>
+      <p class="tagline">places i’ve been &amp; places i dream of ✨</p>
+    </div>
+    <p class="stats" id="stats"></p>
+  </header>
+
+  <div class="toolbar">
+    <label class="search">
+      <span aria-hidden="true">🔍</span>
+      <input id="search" type="search" placeholder="search places, cities, notes…  ( / )" aria-label="Search places">
+    </label>
+    <nav class="tabs" aria-label="Filter places">
+      <button type="button" data-tab="all"></button>
+      <button type="button" data-tab="visited"></button>
+      <button type="button" data-tab="want"></button>
+    </nav>
+    <button type="button" class="btn primary" id="add-btn">＋ add a place</button>
+  </div>
+
+  <main id="groups"></main>
+
+  <footer class="foot">
+    <p>made with 🪶 · your places live in this browser only (localStorage)</p>
+    <p>
+      <button type="button" class="link" id="export-btn">⬇︎ backup</button>
+      <label class="link" for="import-input">⬆︎ restore</label>
+      <input type="file" id="import-input" accept="application/json,.json" hidden>
+      <button type="button" class="link" id="reset-btn">start over</button>
+    </p>
+  </footer>
+
+  <div class="modal" id="modal">
+    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title">add a place ✈️</h2>
+      <form id="place-form">
+        <label>place name
+          <input id="f-name" type="text" required maxlength="90" placeholder="e.g. Sydney Opera House" autocomplete="off">
+        </label>
+
+        <div class="row">
+          <label>city / area
+            <input id="f-city" type="text" required maxlength="60" placeholder="e.g. Sydney">
+          </label>
+          <label>country
+            <input id="f-country" type="text" maxlength="60" placeholder="e.g. Australia">
+          </label>
+        </div>
+
+        <div class="row">
+          <label>kind of place
+            <select id="f-category"></select>
+          </label>
+          <label>when?
+            <input id="f-date" type="date">
+          </label>
+        </div>
+
+        <div class="status-pick" role="radiogroup" aria-label="been or a dream?">
+          <label><input type="radio" name="f-status" value="visited"><span>✨ i’ve been!</span></label>
+          <label><input type="radio" name="f-status" value="want"><span>💭 i dream of it</span></label>
+        </div>
+
+        <label class="favline"><input type="checkbox" id="f-fav"> ⭐ one of my favourites</label>
+
+        <label>little notes
+          <textarea id="f-notes" rows="3" placeholder="memories, plans, who was there…"></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="cancel-btn">cancel</button>
+          <button type="submit" class="btn primary">save place</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
