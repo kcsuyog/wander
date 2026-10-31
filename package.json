@@ -1,0 +1,7 @@
+{
+  "name": "wander",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "🪶 Wander — cute little travel tracker (Preact, no build step)"
+}

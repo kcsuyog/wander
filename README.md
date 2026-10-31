@@ -5,6 +5,17 @@ grouped by city (Sydney, Melbourne, Tokyo, …).
 
 **→ Live: <https://kcsuyog.github.io/wander/>** (free GitHub Pages hosting, deploys on every push to `main`)
 
+## Stack
+
+| Layer | Choice |
+|---|---|
+| UI | **Preact + htm** (vendored ES modules in `vendor/`, ~17KB raw / ~5KB gzipped) — React-style components, **no build step**, no bundler, no CDN |
+| Styling | Hand-written CSS + Google Fonts (Baloo 2 / Quicksand) |
+| Data | Supabase Postgres via PostgREST (`fetch`, no SDK) + `localStorage` fallback |
+| Photos | Supabase Storage (public `photos` bucket, browser uploads) |
+| Geocoding | Photon (open-source, OSM data) · Mini maps: single OSM tiles |
+| Hosting | GitHub Pages |
+
 ## Cloud sync (Supabase)
 
 Places sync to a Supabase Postgres table (`public.places`), so the list is the same on every
@@ -92,6 +103,8 @@ open index.html                       # macOS
 
 | File | What it is |
 |---|---|
-| `index.html` | Markup |
+| `index.html` | Shell: sky scene, `#app` mount point, footer |
 | `style.css` | Pastel cute styling (Baloo 2 + Quicksand) |
-| `app.js` | State, rendering, search, CRUD, Photon autocomplete, Supabase sync |
+| `app.js` | Preact components: cards, timeline, modal, autocomplete, lightbox, cloud sync |
+| `vendor/` | Vendored framework: `preact.module.js`, `hooks.module.js`, `htm.module.js` |
+| `package.json` | Just `"type": "module"` (for `node --check`); no dependencies |

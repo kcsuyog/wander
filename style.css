@@ -122,6 +122,10 @@ body {
 .tabs button.active { background: var(--ink); color: #fff; }
 .tabs .count { opacity: .75; font-size: .82em; }
 
+/* view switcher gets a pink accent */
+.view-tabs { background: #fff; border: 2px solid var(--pink); }
+.view-tabs button.active { background: var(--pink-deep); color: #fff; }
+
 .cloud {
   font-size: .8rem;
   font-weight: 700;

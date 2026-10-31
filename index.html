@@ -12,6 +12,7 @@
 </head>
 <body>
 
+  <!-- 🏔️ the animated, parallax sky scene (pure CSS + a touch of JS) -->
   <div class="sky" aria-hidden="true">
     <div class="sky-sun" data-depth="10"><span class="sun-ball"></span></div>
     <div class="cloud c1" data-depth="22"></div>
@@ -22,37 +23,11 @@
     <div class="sky-plane" data-depth="16">✈️</div>
   </div>
 
-  <header class="top">
-    <div class="brand">
-      <h1>🪶 Wander</h1>
-      <p class="tagline">places i’ve been &amp; places i dream of ✨</p>
-    </div>
-    <p class="stats" id="stats"></p>
-  </header>
-
-  <div class="toolbar">
-    <label class="search">
-      <span aria-hidden="true">🔍</span>
-      <input id="search" type="search" placeholder="search places, cities, notes…  ( / )" aria-label="Search places">
-    </label>
-    <nav class="tabs" aria-label="Filter places">
-      <button type="button" data-tab="all"></button>
-      <button type="button" data-tab="visited"></button>
-      <button type="button" data-tab="want"></button>
-    </nav>
-    <nav class="tabs view-tabs" aria-label="View">
-      <button type="button" data-view="grid">🗂 by city</button>
-      <button type="button" data-view="timeline">📜 timeline</button>
-    </nav>
-      <span class="cloud" id="cloud" hidden></span>
-    <button type="button" class="btn primary" id="add-btn">＋ add a place</button>
-  </div>
-
-  <main id="groups"></main>
+  <!-- 🪶 the app renders here (Preact + htm, vendored — no build step) -->
+  <div id="app"></div>
 
   <footer class="foot">
-    <p>made with 🪶 · places sync to a little Supabase cloud ☁️ (with a local copy in this browser)</p>
-    <p class="credits">place search &amp; maps: <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> · data &amp; tiles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></p>
+    <p class="credits">made with 🪶 · place search &amp; maps: <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> · data &amp; tiles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></p>
     <p>
       <button type="button" class="link" id="export-btn">⬇︎ backup</button>
       <label class="link" for="import-input">⬆︎ restore</label>
@@ -61,85 +36,6 @@
     </p>
   </footer>
 
-  <div class="modal" id="modal">
-    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <h2 id="modal-title">add a place ✈️</h2>
-      <form id="place-form">
-        <label>place name
-          <span class="ac-wrap">
-            <input id="f-name" type="text" required maxlength="90" placeholder="start typing… e.g. Sydney Opera House" autocomplete="off" spellcheck="false">
-            <span class="ac-drop" id="ac-name" hidden></span>
-          </span>
-          <span class="ac-hint" id="f-coord-hint" hidden>📍 found on OpenStreetMap — it’ll get a mini map ✨</span>
-        </label>
-
-        <div class="row">
-          <label>city / area
-            <span class="ac-wrap">
-              <input id="f-city" type="text" required maxlength="60" placeholder="e.g. Sydney" autocomplete="off" spellcheck="false">
-              <span class="ac-drop" id="ac-city" hidden></span>
-            </span>
-          </label>
-          <label>country
-            <input id="f-country" type="text" maxlength="60" placeholder="e.g. Australia">
-          </label>
-        </div>
-
-        <input type="hidden" id="f-lat"><input type="hidden" id="f-lon"><input type="hidden" id="f-zoom">
-
-        <div class="row">
-          <label>kind of place
-            <select id="f-category"></select>
-          </label>
-          <label>when?
-            <input id="f-date" type="date">
-          </label>
-        </div>
-
-        <div class="status-pick" role="radiogroup" aria-label="been or a dream?">
-          <label><input type="radio" name="f-status" value="visited"><span>✨ i’ve been!</span></label>
-          <label><input type="radio" name="f-status" value="want"><span>💭 i dream of it</span></label>
-        </div>
-
-        <fieldset class="who-field">
-          <legend>who’s been / who’s dreaming? 💞</legend>
-          <div class="who-chips" id="who-chips"></div>
-        </fieldset>
-
-        <label>suggested by (optional)
-          <input id="f-suggested" type="text" maxlength="120" placeholder="who told you about it? e.g. Riya 🙌" autocomplete="off">
-        </label>
-
-        <fieldset class="who-field photos-field">
-          <legend>photos 📸 <small>jpg/png/webp/gif · up to 10MB each</small></legend>
-          <div class="photo-row" id="f-photo-row"></div>
-          <label class="photo-add">＋ add photos
-            <input type="file" id="f-photo-input" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif" multiple hidden>
-          </label>
-        </fieldset>
-
-        <label class="favline"><input type="checkbox" id="f-fav"> ⭐ one of my favourites</label>
-
-        <label>little notes
-          <textarea id="f-notes" rows="3" placeholder="memories, plans, who was there…"></textarea>
-        </label>
-
-        <div class="modal-actions">
-          <button type="button" class="btn ghost" id="cancel-btn">cancel</button>
-          <button type="submit" class="btn primary">save place</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="lightbox" id="lightbox" hidden>
-    <button type="button" class="lb-btn lb-close" id="lb-close" aria-label="close">✕</button>
-    <button type="button" class="lb-btn lb-prev" id="lb-prev" aria-label="previous photo">‹</button>
-    <button type="button" class="lb-btn lb-next" id="lb-next" aria-label="next photo">›</button>
-    <img id="lb-img" alt="">
-    <p class="lb-cap" id="lb-cap"></p>
-  </div>
-
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
