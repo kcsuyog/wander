@@ -126,6 +126,8 @@ body {
 .view-tabs { background: #fff; border: 2px solid var(--pink); }
 .view-tabs button.active { background: var(--pink-deep); color: #fff; }
 
+/* ---------- sync status chip (lives up in the header stats line,
+   well away from the toolbar controls; never intercepts pointer) ---------- */
 .cloud {
   font-size: .8rem;
   font-weight: 700;
@@ -133,8 +135,12 @@ body {
   padding: 0 .45rem;
   white-space: nowrap;
   cursor: help;
+  pointer-events: auto;
 }
 .cloud[hidden] { display: none; }
+/* inside the stats paragraph: a quiet inline suffix in the top-right,
+   far from the toolbar controls; tooltip still works */
+.stats .cloud { font-size: .78rem; padding: 0 0 0 .45rem; }
 
 /* ---------- signed-in chip 🔐 ---------- */
 .me {

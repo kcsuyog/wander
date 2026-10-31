@@ -1166,7 +1166,8 @@ function App() {
         </div>
         <p class="stats">${places.length
           ? html`<b>${places.length}</b> place${places.length === 1 ? '' : 's'} in <b>${cityCount}</b> cit${cityCount === 1 ? 'y' : 'ies'} · <b>${visitedCount}</b> been ✨ · <b>${counts.want}</b> someday 💭`
-          : 'a fresh empty map 🗺️'}</p>
+          : 'a fresh empty map 🗺️'}
+          <span class="cloud" title=${cloudTitle}>${cloudText}</span></p>
       </header>
 
       <div class="toolbar">
@@ -1187,7 +1188,6 @@ function App() {
               ${label}
             </button>`)}
         </nav>
-        <span class="cloud" title=${cloudTitle}>${cloudText}</span>
         ${me === undefined
           ? html`<span class="me" title="checking login…">🔐 …</span>`
           : me
