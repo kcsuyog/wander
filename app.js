@@ -106,6 +106,16 @@ function hasCoords(p) {
   return p.lat !== '' && p.lat != null && p.lon !== '' && p.lon != null;
 }
 
+/* Google Maps link: search the *place name* (rich POI listing — photos,
+   hours, reviews) rather than a bare coordinate pin; coordinates are
+   the fallback when a place has no real name. */
+function gmapsUrl(p) {
+  const q = p.name && p.name !== 'A place'
+    ? `${p.name}, ${p.city || ''}${p.country ? `, ${p.country}` : ''}`.trim().replace(/^[,\s]+|[,\s]+$/g, '')
+    : `${p.lat},${p.lon}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
 function MapPreview({ p }) {
   if (!hasCoords(p)) return null;
   const z = p.zoom || 15;
@@ -114,7 +124,7 @@ function MapPreview({ p }) {
   const fx = x - Math.floor(x);
   const fy = y - Math.floor(y);
   const tile = `https://tile.openstreetmap.org/${z}/${Math.floor(x)}/${Math.floor(y)}.png`;
-  const gmaps = `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}`;
+  const gmaps = gmapsUrl(p);
   return html`
     <a class="map" href=${gmaps} target="_blank" rel="noopener" title="open in Google Maps">
       <img src=${tile} alt=${`little map of ${p.name}`} loading="lazy" width="256" height="256"
@@ -662,7 +672,7 @@ function MapView({ places, act }) {
                   ? html`<button type="button" class="btn mini" onClick=${() => act.photo(picked.id, 0)}>📷 photos</button>` : null}
                 <button type="button" class="btn mini" onClick=${() => act.edit(picked.id)}>✏️ edit</button>
                 <a class="btn mini" target="_blank" rel="noopener"
-                  href=${`https://www.google.com/maps/search/?api=1&query=${picked.lat},${picked.lon}`}>↗ google maps</a>
+                  href=${gmapsUrl(picked)}>↗ google maps</a>
               </div>
             </div>
           </div>` : null}
