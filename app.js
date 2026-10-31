@@ -225,15 +225,48 @@ const API = {
 };
 
 /* ---------- photo storage (goes through /api/photos 🔐) ---------- */
+
+/* shrink photos in the browser before upload — 1-3MB screenshots become
+   ~200-400KB JPEGs, so cards and lightbox load way faster. Non-bitmap
+   formats (gif/heic), tiny files, and any failure upload untouched. */
+async function compressImage(file, maxDim = 1600, quality = 0.82) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type || '')) return file;
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return file;
+  }
+  try {
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size <= 300_000) return file;
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file; // no win → keep original
+    const name = (file.name || 'photo').replace(/\.[^.]+$/, '');
+    return new File([blob], `${name}.jpg`, { type: 'image/jpeg' });
+  } finally {
+    bitmap.close?.();
+  }
+}
+
 async function uploadPhoto(placeId, file) {
+  const photo = await compressImage(file);
   const res = await fetch('/api/photos', {
     method: 'POST',
     headers: {
       'x-place-id': placeId,
-      'x-file-name': encodeURIComponent(file.name || ''),
-      'Content-Type': file.type || 'image/jpeg',
+      'x-file-name': encodeURIComponent(photo.name || ''),
+      'Content-Type': photo.type || 'image/jpeg',
     },
-    body: file,
+    body: photo,
   });
   if (!res.ok) throw new Error(`photo upload ${res.status}`);
   return (await res.json()).url;
