@@ -96,8 +96,7 @@ open index.html                       # macOS
 - **Cloud:** Supabase Postgres `public.places` (synced on load + after every change).
 - **Local fallback:** the browser's `localStorage` (key `wander.places.v1`) — offline edits merge
   back into the cloud on the next successful load.
-- The first run shows a few sample Sydney / Melbourne / Tokyo places — delete them freely,
-  or use **start over** to begin with an empty map.
+- The app starts empty — add your own places, and use **start over** to wipe the map clean.
 
 ## Files
 

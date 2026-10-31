@@ -124,19 +124,6 @@ function MapPreview({ p }) {
     </a>`;
 }
 
-/* ---------- sample data (shown on first run, delete freely) ---------- */
-const SEED = [
-  { name: 'Sydney Opera House', city: 'Sydney', country: 'Australia', category: 'landmark', status: 'visited', date: '2024-11-02', who: ['us'], notes: 'Sat on the steps with a gelato while the sails turned gold. 🍦', favorite: true, lat: -33.8568, lon: 151.2153, zoom: 15 },
-  { name: 'Bondi → Coogee walk', city: 'Sydney', country: 'Australia', category: 'beach', status: 'visited', date: '2024-11-04', who: ['us'], notes: 'Six kilometres of cliffs and little coves — swim stops mandatory.', favorite: false, lat: -33.8908, lon: 151.2743, zoom: 13 },
-  { name: 'Royal Botanic Garden', city: 'Sydney', country: 'Australia', category: 'park', status: 'visited', date: '2024-11-03', who: ['suyog'], notes: 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.', favorite: false, lat: -33.8616, lon: 151.2167, zoom: 15 },
-  { name: 'The Grounds of Alexandria', city: 'Sydney', country: 'Australia', category: 'cafe', status: 'visited', date: '', who: ['susmita'], suggestedBy: 'Anisha', notes: 'Coffee in a garden full of flowers and fairy lights.', favorite: false, lat: -33.9106, lon: 151.1943, zoom: 16 },
-  { name: 'Blue Mountains', city: 'Sydney', country: 'Australia', category: 'viewpoint', status: 'want', date: '', who: ['us'], suggestedBy: 'Komal di', notes: 'Ride the Scenic World skyway over the Jamison Valley.', favorite: true, lat: -33.7286, lon: 150.3119, zoom: 13 },
-  { name: 'Manly ferry at sunset', city: 'Sydney', country: 'Australia', category: 'other', status: 'want', date: '', who: ['us'], notes: 'Cheapest harbour cruise there is — sit up top at golden hour.', favorite: false, lat: -33.7955, lon: 151.2761, zoom: 14 },
-  { name: 'Laneway coffee crawl', city: 'Melbourne', country: 'Australia', category: 'cafe', status: 'visited', date: '2024-11-08', who: ['us'], notes: 'Found a tiny roaster off Degraves St. Flat white, perfect.', favorite: false, lat: -37.817, lon: 144.9658, zoom: 16 },
-  { name: 'teamLab Planets', city: 'Tokyo', country: 'Japan', category: 'museum', status: 'want', date: '', who: ['us'], suggestedBy: 'Rahul', notes: 'Barefoot, wading through glowing water. Book ahead!', favorite: true, lat: 35.653, lon: 139.7897, zoom: 15 },
-  { name: 'Yakitori under the arches', city: 'Tokyo', country: 'Japan', category: 'food', status: 'want', date: '', who: ['us'], notes: 'Yurakucho at night — smoke, chatter, cold beer.', favorite: false, lat: 35.6748, lon: 139.7617, zoom: 15 },
-];
-
 /* ---------- state ---------- */
 const STORAGE_KEY = 'wander.places.v1';
 
@@ -171,21 +158,38 @@ function persist(list) {
   }
 }
 
-let seededFresh = false; // true when this browser had no stored data (samples were just created)
+/* ---------- one-time cleanup: the old first-run sample places ----------
+   They used to be seeded into new browsers (and synced to the cloud) —
+   removed 2026-10-31. Matches must be exact on name+city+country+notes so
+   real places, even ones inspired by a sample, are never touched. */
+const LEGACY_SAMPLES = [
+  ['Sydney Opera House', 'Sydney', 'Australia', 'Sat on the steps with a gelato while the sails turned gold. 🍦'],
+  ['Bondi → Coogee walk', 'Sydney', 'Australia', 'Six kilometres of cliffs and little coves — swim stops mandatory.'],
+  ['Royal Botanic Garden', 'Sydney', 'Australia', 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.'],
+  ['The Grounds of Alexandria', 'Sydney', 'Australia', 'Coffee in a garden full of flowers and fairy lights.'],
+  ['Blue Mountains', 'Sydney', 'Australia', 'Ride the Scenic World skyway over the Jamison Valley.'],
+  ['Manly ferry at sunset', 'Sydney', 'Australia', 'Cheapest harbour cruise there is — sit up top at golden hour.'],
+  ['Laneway coffee crawl', 'Melbourne', 'Australia', 'Found a tiny roaster off Degraves St. Flat white, perfect.'],
+  ['teamLab Planets', 'Tokyo', 'Japan', 'Barefoot, wading through glowing water. Book ahead!'],
+  ['Yakitori under the arches', 'Tokyo', 'Japan', 'Yurakucho at night — smoke, chatter, cold beer.'],
+];
+const isLegacySample = (p) => LEGACY_SAMPLES.some(([name, city, country, notes]) =>
+  p.name === name && p.city === city && p.country === country && p.notes === notes);
+
 function loadPlaces() {
+  let list = [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.map(normalize);
+      if (Array.isArray(parsed)) list = parsed.map(normalize);
     }
   } catch {
-    /* fall through to first-run seeds */
+    /* fall through to an empty list */
   }
-  seededFresh = true;
-  const seeded = SEED.map((p) => ({ ...normalize(p), id: uid(), createdAt: Date.now() }));
-  persist(seeded);
-  return seeded;
+  list = list.filter((p) => !isLegacySample(p));
+  persist(list);
+  return list;
 }
 
 function loadView() {
@@ -768,11 +772,12 @@ function App() {
       try {
         const res = await cloudFetch('places?select=*&order=createdAt.asc');
         const rows = await res.json();
-        const cloudList = rows.map(normalize);
-        // if the cloud already has places, don't re-upload the first-run samples
-        const localOnly = (cloudList.length && seededFresh)
-          ? []
-          : placesRef.current.filter((p) => !cloudList.some((c) => c.id === p.id));
+        const allCloud = rows.map(normalize);
+        // purge any first-run samples still hanging around in the cloud
+        const cloudList = allCloud.filter((p) => !isLegacySample(p));
+        allCloud.filter(isLegacySample).forEach((p) => queueDelete(p.id));
+        // local rows that aren't in the cloud yet are uploaded so nothing is lost
+        const localOnly = placesRef.current.filter((p) => !cloudList.some((c) => c.id === p.id));
         const merged = [...cloudList, ...localOnly];
         setPlaces(merged);
         persist(merged);
