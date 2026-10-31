@@ -124,19 +124,6 @@ function MapPreview({ p }) {
     </a>`;
 }
 
-/* ---------- sample data (shown on first run, delete freely) ---------- */
-const SEED = [
-  { name: 'Sydney Opera House', city: 'Sydney', country: 'Australia', category: 'landmark', status: 'visited', date: '2024-11-02', who: ['us'], notes: 'Sat on the steps with a gelato while the sails turned gold. 🍦', favorite: true, lat: -33.8568, lon: 151.2153, zoom: 15 },
-  { name: 'Bondi → Coogee walk', city: 'Sydney', country: 'Australia', category: 'beach', status: 'visited', date: '2024-11-04', who: ['us'], notes: 'Six kilometres of cliffs and little coves — swim stops mandatory.', favorite: false, lat: -33.8908, lon: 151.2743, zoom: 13 },
-  { name: 'Royal Botanic Garden', city: 'Sydney', country: 'Australia', category: 'park', status: 'visited', date: '2024-11-03', who: ['suyog'], notes: 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.', favorite: false, lat: -33.8616, lon: 151.2167, zoom: 15 },
-  { name: 'The Grounds of Alexandria', city: 'Sydney', country: 'Australia', category: 'cafe', status: 'visited', date: '', who: ['susmita'], suggestedBy: 'Anisha', notes: 'Coffee in a garden full of flowers and fairy lights.', favorite: false, lat: -33.9106, lon: 151.1943, zoom: 16 },
-  { name: 'Blue Mountains', city: 'Sydney', country: 'Australia', category: 'viewpoint', status: 'want', date: '', who: ['us'], suggestedBy: 'Komal di', notes: 'Ride the Scenic World skyway over the Jamison Valley.', favorite: true, lat: -33.7286, lon: 150.3119, zoom: 13 },
-  { name: 'Manly ferry at sunset', city: 'Sydney', country: 'Australia', category: 'other', status: 'want', date: '', who: ['us'], notes: 'Cheapest harbour cruise there is — sit up top at golden hour.', favorite: false, lat: -33.7955, lon: 151.2761, zoom: 14 },
-  { name: 'Laneway coffee crawl', city: 'Melbourne', country: 'Australia', category: 'cafe', status: 'visited', date: '2024-11-08', who: ['us'], notes: 'Found a tiny roaster off Degraves St. Flat white, perfect.', favorite: false, lat: -37.817, lon: 144.9658, zoom: 16 },
-  { name: 'teamLab Planets', city: 'Tokyo', country: 'Japan', category: 'museum', status: 'want', date: '', who: ['us'], suggestedBy: 'Rahul', notes: 'Barefoot, wading through glowing water. Book ahead!', favorite: true, lat: 35.653, lon: 139.7897, zoom: 15 },
-  { name: 'Yakitori under the arches', city: 'Tokyo', country: 'Japan', category: 'food', status: 'want', date: '', who: ['us'], notes: 'Yurakucho at night — smoke, chatter, cold beer.', favorite: false, lat: 35.6748, lon: 139.7617, zoom: 15 },
-];
-
 /* ---------- state ---------- */
 const STORAGE_KEY = 'wander.places.v1';
 
@@ -171,21 +158,38 @@ function persist(list) {
   }
 }
 
-let seededFresh = false; // true when this browser had no stored data (samples were just created)
+/* ---------- one-time cleanup: the old first-run sample places ----------
+   They used to be seeded into new browsers (and synced to the cloud) —
+   removed 2026-10-31. Matches must be exact on name+city+country+notes so
+   real places, even ones inspired by a sample, are never touched. */
+const LEGACY_SAMPLES = [
+  ['Sydney Opera House', 'Sydney', 'Australia', 'Sat on the steps with a gelato while the sails turned gold. 🍦'],
+  ['Bondi → Coogee walk', 'Sydney', 'Australia', 'Six kilometres of cliffs and little coves — swim stops mandatory.'],
+  ['Royal Botanic Garden', 'Sydney', 'Australia', 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.'],
+  ['The Grounds of Alexandria', 'Sydney', 'Australia', 'Coffee in a garden full of flowers and fairy lights.'],
+  ['Blue Mountains', 'Sydney', 'Australia', 'Ride the Scenic World skyway over the Jamison Valley.'],
+  ['Manly ferry at sunset', 'Sydney', 'Australia', 'Cheapest harbour cruise there is — sit up top at golden hour.'],
+  ['Laneway coffee crawl', 'Melbourne', 'Australia', 'Found a tiny roaster off Degraves St. Flat white, perfect.'],
+  ['teamLab Planets', 'Tokyo', 'Japan', 'Barefoot, wading through glowing water. Book ahead!'],
+  ['Yakitori under the arches', 'Tokyo', 'Japan', 'Yurakucho at night — smoke, chatter, cold beer.'],
+];
+const isLegacySample = (p) => LEGACY_SAMPLES.some(([name, city, country, notes]) =>
+  p.name === name && p.city === city && p.country === country && p.notes === notes);
+
 function loadPlaces() {
+  let list = [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.map(normalize);
+      if (Array.isArray(parsed)) list = parsed.map(normalize);
     }
   } catch {
-    /* fall through to first-run seeds */
+    /* fall through to an empty list */
   }
-  seededFresh = true;
-  const seeded = SEED.map((p) => ({ ...normalize(p), id: uid(), createdAt: Date.now() }));
-  persist(seeded);
-  return seeded;
+  list = list.filter((p) => !isLegacySample(p));
+  persist(list);
+  return list;
 }
 
 function loadView() {
@@ -198,50 +202,78 @@ function loadView() {
   return { search: '', tab: 'all', mode };
 }
 
-/* ---------- cloud sync (Supabase) ----------
-   Only the publishable key is used in the frontend — that's safe because Row
-   Level Security decides what the anon role may do. The secret key and the
-   database password are never used here and never committed. */
-const SUPABASE_URL = 'https://eozbynvaoidivxudplxr.supabase.co';
-const SUPABASE_PUB_KEY = 'sb_publishable_7_5RUdFNFFxlJFqZzAVh6w_8NNXio0j';
-const PHOTO_URL_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/photos/`;
+/* ---------- backend (Vercel functions → Supabase) ----------
+   All Supabase access goes through our /api/* functions — no keys in the
+   browser. Reads are public; every write needs a signed-in session 🔐
+   (GitHub OAuth, allowlisted logins only). */
+const API = {
+  async get(path) {
+    const res = await fetch(`/api/${path}`);
+    if (!res.ok) throw new Error(`api ${res.status}`);
+    return res.json();
+  },
+  async send(path, method, data) {
+    const res = await fetch(`/api/${path}`, {
+      method,
+      headers: data === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: data === undefined ? undefined : JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`api ${res.status}`);
+    if (res.status === 204) return null;
+    return res.json().catch(() => null);
+  },
+};
 
-async function sbFetch(path, opts = {}) {
-  const res = await fetch(`${SUPABASE_URL}/${path}`, {
-    ...opts,
-    headers: {
-      apikey: SUPABASE_PUB_KEY,
-      Authorization: `Bearer ${SUPABASE_PUB_KEY}`,
-      ...(opts.body && !(opts.body instanceof File) ? { 'Content-Type': 'application/json' } : {}),
-      ...(opts.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error(`supabase ${res.status}`);
-  return res;
+/* ---------- photo storage (goes through /api/photos 🔐) ---------- */
+
+/* shrink photos in the browser before upload — 1-3MB screenshots become
+   ~200-400KB JPEGs, so cards and lightbox load way faster. Non-bitmap
+   formats (gif/heic), tiny files, and any failure upload untouched. */
+async function compressImage(file, maxDim = 1600, quality = 0.82) {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type || '')) return file;
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return file;
+  }
+  try {
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    if (scale === 1 && file.size <= 300_000) return file;
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file; // no win → keep original
+    const name = (file.name || 'photo').replace(/\.[^.]+$/, '');
+    return new File([blob], `${name}.jpg`, { type: 'image/jpeg' });
+  } finally {
+    bitmap.close?.();
+  }
 }
 
-async function cloudFetch(path, opts = {}) {
-  return sbFetch(`rest/v1/${path}`, opts);
-}
-
-/* ---------- photo storage (public bucket "photos") ---------- */
 async function uploadPhoto(placeId, file) {
-  const ext =
-    ((file.name.includes('.') ? file.name.split('.').pop() : '') || 'jpg')
-      .toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'jpg';
-  const path = `${placeId}/${uid()}.${ext}`;
-  await sbFetch(`storage/v1/object/photos/${path}`, {
+  const photo = await compressImage(file);
+  const res = await fetch('/api/photos', {
     method: 'POST',
-    headers: { 'Content-Type': file.type || 'image/jpeg', 'x-upsert': 'true' },
-    body: file,
+    headers: {
+      'x-place-id': placeId,
+      'x-file-name': encodeURIComponent(photo.name || ''),
+      'Content-Type': photo.type || 'image/jpeg',
+    },
+    body: photo,
   });
-  return `${PHOTO_URL_PREFIX}${path}`;
+  if (!res.ok) throw new Error(`photo upload ${res.status}`);
+  return (await res.json()).url;
 }
 
 async function deletePhotoObject(url) {
-  if (!url.startsWith(PHOTO_URL_PREFIX)) return;
-  const path = url.slice(PHOTO_URL_PREFIX.length);
-  await sbFetch(`storage/v1/object/photos/${path}`, { method: 'DELETE' });
+  await API.send('photos', 'DELETE', { url });
 }
 
 const cloudRow = (p) => ({
@@ -296,16 +328,10 @@ async function flushQueue() {
     const dels = batch.filter(([, e]) => e.op === 'del').map(([id]) => id);
     const ups = batch.filter(([, e]) => e.op === 'up').map(([, e]) => cloudRow(e.place));
     if (dels.length) {
-      await Promise.all(
-        dels.map((id) => cloudFetch(`places?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }))
-      );
+      await API.send(`places?id=${encodeURIComponent(dels.join(','))}`, 'DELETE');
     }
     if (ups.length) {
-      await cloudFetch('places', {
-        method: 'POST',
-        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-        body: JSON.stringify(ups),
-      });
+      await API.send('places', 'POST', ups);
     }
     setCloudOk(true);
   } catch {
@@ -735,12 +761,33 @@ function App() {
   const [modal, setModal] = useState(null); // null | { place }
   const [lb, setLb] = useState(null);       // { placeId, idx }
   const [cloud, setCloud] = useState(cloudOk);
+  const [me, setMe] = useState(undefined);   // undefined=checking · null=anon · {login,name,avatar}
   const searchRef = useRef(null);
 
   const placesRef = useRef(places);
   placesRef.current = places;
   const lbRef = useRef(lb);
   lbRef.current = lb;
+  const meRef = useRef(me);
+  meRef.current = me;
+  const canEdit = !!me;
+  const goLogin = () => { location.href = '/api/auth/login'; };
+
+  /* who am i? → /api/auth/me */
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(async (r) => setMe(r.ok ? (await r.json()).user : null))
+      .catch(() => setMe(null));
+  }, []);
+
+  /* feedback from the OAuth redirect (?auth=…) */
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('auth');
+    if (!q) return;
+    history.replaceState(null, '', location.pathname);
+    if (q === 'not-allowed') alert('🔐 that GitHub account isn’t on the edit allowlist — add its login to ALLOWED_LOGINS.');
+    else if (q !== 'ok') alert('🙈 sign-in didn’t work — please try again.');
+  }, []);
 
   const setView = (patch) => setViewState((v) => {
     if (patch.mode != null) {
@@ -760,55 +807,77 @@ function App() {
   useEffect(() => {
     api.getPlaces = () => placesRef.current;
     api.replaceAll = (rows) => { setPlaces(rows); persist(rows); queueUpsert(rows); };
+    api.canEdit = () => {
+      if (!meRef.current) { location.href = '/api/auth/login'; return false; }
+      return true;
+    };
   }, []);
 
-  /* initial cloud load — cloud wins; local-only rows are uploaded so nothing is lost */
+  /* initial cloud load — waits for the auth check; cloud wins for everyone,
+     but only 🔐 signed-in visitors may upload or purge cloud-side */
+  const cloudLoadedRef = useRef(false);
   useEffect(() => {
+    if (me === undefined || cloudLoadedRef.current) return;
+    cloudLoadedRef.current = true;
     (async () => {
       try {
-        const res = await cloudFetch('places?select=*&order=createdAt.asc');
-        const rows = await res.json();
-        const cloudList = rows.map(normalize);
-        // if the cloud already has places, don't re-upload the first-run samples
-        const localOnly = (cloudList.length && seededFresh)
-          ? []
-          : placesRef.current.filter((p) => !cloudList.some((c) => c.id === p.id));
-        const merged = [...cloudList, ...localOnly];
-        setPlaces(merged);
-        persist(merged);
-        if (localOnly.length) queueUpsert(localOnly);
+        const rows = await API.get('places');
+        const allCloud = rows.map(normalize);
+        // purge any first-run samples still hanging around in the cloud (needs 🔐)
+        const cloudList = allCloud.filter((p) => !isLegacySample(p));
+        if (me) {
+          allCloud.filter(isLegacySample).forEach((p) => queueDelete(p.id));
+          // local rows that aren't in the cloud yet are uploaded so nothing is lost
+          const localOnly = placesRef.current.filter((p) => !cloudList.some((c) => c.id === p.id));
+          const merged = [...cloudList, ...localOnly];
+          setPlaces(merged);
+          persist(merged);
+          if (localOnly.length) queueUpsert(localOnly);
+        } else {
+          // read-only: just show what the cloud has
+          setPlaces(cloudList);
+          persist(cloudList);
+        }
         setCloudOk(true);
       } catch {
         setCloudOk(false);
       }
     })();
-  }, []);
+  }, [me]);
 
-  /* actions for cards */
+  /* actions for cards — every edit needs a 🔐 session */
   const act = useMemo(() => ({
-    fav: (id) => setPlaces((ps) => {
-      const next = ps.map((p) => (p.id === id ? { ...p, favorite: !p.favorite } : p));
-      persist(next);
-      const t = next.find((p) => p.id === id);
-      if (t) queueUpsert([t]);
-      return next;
-    }),
-    toggle: (id) => setPlaces((ps) => {
-      const next = ps.map((p) => {
-        if (p.id !== id) return p;
-        const visited = p.status === 'visited';
-        return { ...p, status: visited ? 'want' : 'visited', date: visited ? '' : (p.date || today()) };
+    fav: (id) => {
+      if (!meRef.current) return goLogin();
+      setPlaces((ps) => {
+        const next = ps.map((p) => (p.id === id ? { ...p, favorite: !p.favorite } : p));
+        persist(next);
+        const t = next.find((p) => p.id === id);
+        if (t) queueUpsert([t]);
+        return next;
       });
-      persist(next);
-      const t = next.find((p) => p.id === id);
-      if (t) queueUpsert([t]);
-      return next;
-    }),
+    },
+    toggle: (id) => {
+      if (!meRef.current) return goLogin();
+      setPlaces((ps) => {
+        const next = ps.map((p) => {
+          if (p.id !== id) return p;
+          const visited = p.status === 'visited';
+          return { ...p, status: visited ? 'want' : 'visited', date: visited ? '' : (p.date || today()) };
+        });
+        persist(next);
+        const t = next.find((p) => p.id === id);
+        if (t) queueUpsert([t]);
+        return next;
+      });
+    },
     edit: (id) => {
+      if (!meRef.current) return goLogin();
       const p = placesRef.current.find((x) => x.id === id);
       if (p) setModal({ place: p });
     },
     del: (id) => {
+      if (!meRef.current) return goLogin();
       const p = placesRef.current.find((x) => x.id === id);
       if (!p) return;
       if (!confirm(`say goodbye to “${p.name}”? 🥺`)) return;
@@ -823,6 +892,7 @@ function App() {
   }), []);
 
   const savePlace = (placeId, data, removedUrls) => {
+    if (!meRef.current) return goLogin();
     setPlaces((ps) => {
       const exists = ps.some((p) => p.id === placeId);
       const next = exists
@@ -874,7 +944,7 @@ function App() {
   if (!places.length) {
     content = html`
       <${Empty} big="🪶" title="no places yet!" sub="add your first spot — been or dreamed, both count.">
-        <button type="button" class="btn primary" onClick=${() => setModal({ place: null })}>＋ add a place</button>
+        <button type="button" class="btn primary" onClick=${() => (me ? setModal({ place: null }) : goLogin())}>＋ add a place</button>
       <//>`;
   } else if (!visible.length) {
     content = html`
@@ -932,7 +1002,17 @@ function App() {
             </button>`)}
         </nav>
         <span class="cloud" title=${cloudTitle}>${cloudText}</span>
-        <button type="button" class="btn primary" onClick=${() => setModal({ place: null })}>＋ add a place</button>
+        ${me === undefined
+          ? html`<span class="me" title="checking login…">🔐 …</span>`
+          : me
+            ? html`<span class="me" title=${`signed in as ${me.login} 🔐`}>
+                <img src=${me.avatar} alt=${me.login} width="22" height="22" />
+                <b class="me-name">${me.name || me.login}</b>
+                <a class="link" href="/api/auth/logout">sign out</a>
+              </span>`
+            : html`<a class="btn ghost" href="/api/auth/login" title="sign in to add & edit places">🔐 sign in</a>`}
+        <button type="button" class="btn primary" title=${canEdit ? '' : 'sign in first 🔐'}
+          onClick=${() => (me ? setModal({ place: null }) : goLogin())}>＋ add a place</button>
       </div>
 
       <main id="groups">${content}</main>
@@ -963,6 +1043,7 @@ if (typeof document !== 'undefined') {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
+    if (!api.canEdit?.()) return;
     try {
       const data = JSON.parse(await file.text());
       if (!Array.isArray(data)) throw new Error('not a list');
@@ -974,6 +1055,7 @@ if (typeof document !== 'undefined') {
   });
 
   $('#reset-btn')?.addEventListener('click', () => {
+    if (!api.canEdit?.()) return;
     const current = api.getPlaces?.() ?? [];
     if (current.length && !confirm('Clear ALL places and start fresh? This cannot be undone.')) return;
     current.forEach((p) => (p.photos || []).forEach((u) => deletePhotoObject(u).catch(() => {})));
