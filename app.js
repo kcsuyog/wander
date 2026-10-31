@@ -36,23 +36,161 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
+/* ---------- place search (Photon — open-source geocoder over OSM, no key, no billing) ---------- */
+const PHOTON_URL = 'https://photon.komoot.io/api/';
+
+async function photonSuggest(query, layers) {
+  const params = new URLSearchParams({ q: query, limit: '6', lang: 'en' });
+  if (layers) for (const layer of layers) params.append('layer', layer);
+  const res = await fetch(`${PHOTON_URL}?${params}`);
+  if (!res.ok) throw new Error(`photon ${res.status}`);
+  const data = await res.json();
+  return (data.features || []).map((f) => ({
+    ...f.properties,
+    lat: f.geometry.coordinates[1],
+    lon: f.geometry.coordinates[0],
+  }));
+}
+
+/* guess a Wander category from OSM tags — nice little touch */
+const OSM_CATEGORY = {
+  cafe: 'cafe', restaurant: 'food', fast_food: 'food', food_court: 'food', ice_cream: 'food', brewery: 'food',
+  bar: 'night', pub: 'night', nightclub: 'night',
+  beach: 'beach', park: 'park', garden: 'park', playground: 'park',
+  museum: 'museum', gallery: 'museum', aquarium: 'museum', zoo: 'museum', artwork: 'museum', theatre: 'museum',
+  attraction: 'landmark', viewpoint: 'viewpoint', peak: 'viewpoint', tower: 'landmark', castle: 'landmark',
+  monument: 'landmark', memorial: 'landmark', lighthouse: 'landmark', pier: 'landmark',
+  mountain: 'nature', waterfall: 'nature', forest: 'nature', wood: 'nature', nature_reserve: 'nature',
+};
+function categoryFromOSM(r) {
+  if (r.osm_key === 'shop' || r.osm_value === 'mall' || r.osm_value === 'supermarket') return 'shopping';
+  return OSM_CATEGORY[r.osm_value] || null;
+}
+
+/* wider view for whole-city picks */
+function guessZoom(r) {
+  const cityish = ['city', 'town', 'village', 'hamlet', 'suburb', 'district', 'locality', 'state', 'country'];
+  return cityish.includes(r.osm_value) || cityish.includes(r.type) ? 12 : 15;
+}
+
+/* reusable type-ahead dropdown (keyboard + mouse + debounced fetches) */
+function attachAutocomplete(input, drop, cfg, apply) {
+  let results = [];
+  let active = -1;
+  let aborter = null;
+  let timer = null;
+
+  const close = () => { drop.hidden = true; active = -1; };
+
+  const paint = () => {
+    if (!results.length) return close();
+    drop.innerHTML = results
+      .map((r, i) => `
+        <div class="ac-item${i === active ? ' active' : ''}" data-i="${i}">
+          <b>${esc(cfg.main(r))}</b>
+          <span>${esc(cfg.sub(r))}</span>
+        </div>`)
+      .join('');
+    drop.hidden = false;
+    drop.querySelector('.ac-item.active')?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const query = async () => {
+    const q = input.value.trim();
+    if (q.length < 2) { results = []; return close(); }
+    aborter?.abort();
+    aborter = new AbortController();
+    try {
+      const list = await photonSuggest(q, cfg.layers);
+      if (input.value.trim() !== q) return; // stale response, a newer one is coming
+      results = list;
+      active = results.length ? 0 : -1;
+      paint();
+    } catch {
+      /* photon hiccup — just close, typing still works */
+      close();
+    }
+  };
+
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(query, 250);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (drop.hidden) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!results.length) return;
+      active = (active + (e.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length;
+      paint();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (active >= 0) apply(results[active]);
+      close();
+    } else if (e.key === 'Escape') {
+      e.stopPropagation(); // don’t also close the modal
+      close();
+    }
+  });
+  drop.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.ac-item');
+    if (!item) return;
+    e.preventDefault(); // keep focus in the input
+    apply(results[+item.dataset.i]);
+    close();
+  });
+  document.addEventListener('mousedown', (e) => {
+    if (!drop.contains(e.target) && e.target !== input) close();
+  });
+}
+
+/* ---------- mini static maps (one OSM tile, pin in the middle) ---------- */
+function lonToTileX(lon, z) { return ((lon + 180) / 360) * Math.pow(2, z); }
+function latToTileY(lat, z) {
+  const r = (lat * Math.PI) / 180;
+  return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * Math.pow(2, z);
+}
+function hasCoords(p) {
+  return p.lat !== '' && p.lat != null && p.lon !== '' && p.lon != null;
+}
+function mapHTML(p) {
+  if (!hasCoords(p)) return '';
+  const z = p.zoom || 15;
+  const x = lonToTileX(p.lon, z);
+  const y = latToTileY(p.lat, z);
+  const fx = x - Math.floor(x);
+  const fy = y - Math.floor(y);
+  const tile = `https://tile.openstreetmap.org/${z}/${Math.floor(x)}/${Math.floor(y)}.png`;
+  const osm = `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#${z}/${p.lat}/${p.lon}`;
+  // centre the chosen point inside the 108px-high window (256px tile)
+  const offX = `calc(50% - ${(fx * 256).toFixed(1)}px)`;
+  const offY = `calc(54px - ${(fy * 256).toFixed(1)}px)`;
+  return `
+  <a class="map" href="${osm}" target="_blank" rel="noopener" title="open in OpenStreetMap">
+    <img src="${tile}" alt="little map of ${esc(p.name)}" loading="lazy" style="left:${offX};top:${offY}" width="256" height="256">
+    <span class="pin" aria-hidden="true">📍</span>
+    <span class="map-open" aria-hidden="true">🗺 open ↗</span>
+  </a>`;
+}
+
 /* ---------- sample data (shown on first run, delete freely) ---------- */
 const SEED = [
-  { name: 'Sydney Opera House', city: 'Sydney', country: 'Australia', category: 'landmark', status: 'visited', date: '2024-11-02', notes: 'Sat on the steps with a gelato while the sails turned gold. 🍦', favorite: true },
-  { name: 'Bondi → Coogee walk', city: 'Sydney', country: 'Australia', category: 'beach', status: 'visited', date: '2024-11-04', notes: 'Six kilometres of cliffs and little coves — swim stops mandatory.', favorite: false },
-  { name: 'Royal Botanic Garden', city: 'Sydney', country: 'Australia', category: 'park', status: 'visited', date: '2024-11-03', notes: 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.', favorite: false },
-  { name: 'The Grounds of Alexandria', city: 'Sydney', country: 'Australia', category: 'cafe', status: 'visited', date: '', notes: 'Coffee in a garden full of flowers and fairy lights.', favorite: false },
-  { name: 'Blue Mountains', city: 'Sydney', country: 'Australia', category: 'viewpoint', status: 'want', date: '', notes: 'Ride the Scenic World skyway over the Jamison Valley.', favorite: true },
-  { name: 'Manly ferry at sunset', city: 'Sydney', country: 'Australia', category: 'other', status: 'want', date: '', notes: 'Cheapest harbour cruise there is — sit up top at golden hour.', favorite: false },
-  { name: 'Laneway coffee crawl', city: 'Melbourne', country: 'Australia', category: 'cafe', status: 'visited', date: '2024-11-08', notes: 'Found a tiny roaster off Degraves St. Flat white, perfect.', favorite: false },
-  { name: 'teamLab Planets', city: 'Tokyo', country: 'Japan', category: 'museum', status: 'want', date: '', notes: 'Barefoot, wading through glowing water. Book ahead!', favorite: true },
-  { name: 'Yakitori under the arches', city: 'Tokyo', country: 'Japan', category: 'food', status: 'want', date: '', notes: 'Yurakucho at night — smoke, chatter, cold beer.', favorite: false },
+  { name: 'Sydney Opera House', city: 'Sydney', country: 'Australia', category: 'landmark', status: 'visited', date: '2024-11-02', notes: 'Sat on the steps with a gelato while the sails turned gold. 🍦', favorite: true, lat: -33.8568, lon: 151.2153, zoom: 15 },
+  { name: 'Bondi → Coogee walk', city: 'Sydney', country: 'Australia', category: 'beach', status: 'visited', date: '2024-11-04', notes: 'Six kilometres of cliffs and little coves — swim stops mandatory.', favorite: false, lat: -33.8908, lon: 151.2743, zoom: 13 },
+  { name: 'Royal Botanic Garden', city: 'Sydney', country: 'Australia', category: 'park', status: 'visited', date: '2024-11-03', notes: 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.', favorite: false, lat: -33.8616, lon: 151.2167, zoom: 15 },
+  { name: 'The Grounds of Alexandria', city: 'Sydney', country: 'Australia', category: 'cafe', status: 'visited', date: '', notes: 'Coffee in a garden full of flowers and fairy lights.', favorite: false, lat: -33.9106, lon: 151.1943, zoom: 16 },
+  { name: 'Blue Mountains', city: 'Sydney', country: 'Australia', category: 'viewpoint', status: 'want', date: '', notes: 'Ride the Scenic World skyway over the Jamison Valley.', favorite: true, lat: -33.7286, lon: 150.3119, zoom: 13 },
+  { name: 'Manly ferry at sunset', city: 'Sydney', country: 'Australia', category: 'other', status: 'want', date: '', notes: 'Cheapest harbour cruise there is — sit up top at golden hour.', favorite: false, lat: -33.7955, lon: 151.2761, zoom: 14 },
+  { name: 'Laneway coffee crawl', city: 'Melbourne', country: 'Australia', category: 'cafe', status: 'visited', date: '2024-11-08', notes: 'Found a tiny roaster off Degraves St. Flat white, perfect.', favorite: false, lat: -37.817, lon: 144.9658, zoom: 16 },
+  { name: 'teamLab Planets', city: 'Tokyo', country: 'Japan', category: 'museum', status: 'want', date: '', notes: 'Barefoot, wading through glowing water. Book ahead!', favorite: true, lat: 35.653, lon: 139.7897, zoom: 15 },
+  { name: 'Yakitori under the arches', city: 'Tokyo', country: 'Japan', category: 'food', status: 'want', date: '', notes: 'Yurakucho at night — smoke, chatter, cold beer.', favorite: false, lat: 35.6748, lon: 139.7617, zoom: 15 },
 ];
 
 /* ---------- state ---------- */
 const STORAGE_KEY = 'wander.places.v1';
 
 function normalize(p) {
+  const num = (v) => (v === '' || v == null || Number.isNaN(+v) ? '' : +v);
   return {
     id: p.id || uid(),
     name: p.name || 'A place',
@@ -63,6 +201,9 @@ function normalize(p) {
     date: p.date || '',
     favorite: !!p.favorite,
     notes: p.notes || '',
+    lat: num(p.lat),
+    lon: num(p.lon),
+    zoom: num(p.zoom),
     createdAt: p.createdAt || Date.now(),
   };
 }
@@ -93,6 +234,128 @@ function loadPlaces() {
 let places = loadPlaces();
 let view = { search: '', tab: 'all' };
 let editingId = null;
+
+/* ---------- cloud sync (Supabase) ----------
+   Uses ONLY the publishable key — safe in a public frontend because Row Level
+   Security on public.places decides what the anon role may do. The secret key
+   and the database password are never used here (and never committed). */
+const SUPABASE_URL = 'https://eozbynvaoidivxudplxr.supabase.co';
+const SUPABASE_PUB_KEY = 'sb_publishable_7_5RUdFNFFxlJFqZzAVh6w_8NNXio0j';
+
+async function cloudFetch(path, opts = {}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...opts,
+    headers: {
+      apikey: SUPABASE_PUB_KEY,
+      Authorization: `Bearer ${SUPABASE_PUB_KEY}`,
+      ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`supabase ${res.status}`);
+  return res;
+}
+
+const cloudRow = (p) => ({
+  id: p.id,
+  name: p.name,
+  city: p.city,
+  country: p.country,
+  category: p.category,
+  status: p.status,
+  date: p.date,
+  favorite: p.favorite,
+  notes: p.notes,
+  lat: p.lat === '' ? null : p.lat,
+  lon: p.lon === '' ? null : p.lon,
+  zoom: p.zoom === '' ? null : p.zoom,
+  createdAt: p.createdAt || Date.now(),
+});
+
+let cloudOk = null; // null = connecting, true = synced, false = offline (localStorage keeps everything)
+
+function cloudStatus() {
+  const el = $('#cloud');
+  if (!el) return;
+  el.hidden = false;
+  if (cloudOk === null) {
+    el.textContent = '☁️ syncing…';
+    el.title = 'connecting to the cloud…';
+  } else if (cloudOk) {
+    el.textContent = '☁️ synced';
+    el.title = 'saved to Supabase — same list on every device';
+  } else {
+    el.textContent = '☁️ offline';
+    el.title = 'cloud unreachable — changes stay in this browser and merge later';
+  }
+}
+
+/* debounced write queue — survives bursts of ⭐ toggles */
+const pending = new Map(); // id → 'up' | 'del'
+let flushTimer = null;
+let flushing = false;
+
+function queueUpsert(list) {
+  for (const p of list) pending.set(p.id, 'up');
+  scheduleFlush();
+}
+function queueDelete(id) {
+  pending.set(id, 'del');
+  scheduleFlush();
+}
+function scheduleFlush() {
+  clearTimeout(flushTimer);
+  flushTimer = setTimeout(flushQueue, 600);
+}
+async function flushQueue() {
+  if (flushing || !pending.size) return;
+  flushing = true;
+  const batch = [...pending];
+  pending.clear();
+  try {
+    const dels = batch.filter(([, op]) => op === 'del').map(([id]) => id);
+    const ups = batch
+      .filter(([, op]) => op === 'up')
+      .map(([id]) => places.find((p) => p.id === id))
+      .filter(Boolean)
+      .map(cloudRow);
+    if (dels.length) {
+      await Promise.all(
+        dels.map((id) => cloudFetch(`places?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' }))
+      );
+    }
+    if (ups.length) {
+      await cloudFetch('places', {
+        method: 'POST',
+        headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify(ups),
+      });
+    }
+    cloudOk = true;
+  } catch {
+    cloudOk = false; // changes stay in localStorage; they merge back on a successful load
+  }
+  flushing = false;
+  cloudStatus();
+}
+
+/* load: cloud wins; local-only rows get uploaded so nothing is lost */
+async function syncFromCloud() {
+  try {
+    const res = await cloudFetch('places?select=*&order=createdAt.asc');
+    const rows = await res.json();
+    const cloud = rows.map(normalize);
+    const localOnly = places.filter((p) => !cloud.some((c) => c.id === p.id));
+    places = [...cloud, ...localOnly];
+    persist(places);
+    render();
+    cloudOk = true;
+    if (localOnly.length) queueUpsert(localOnly);
+  } catch {
+    cloudOk = false;
+  }
+  cloudStatus();
+}
 
 /* ---------- element refs ---------- */
 const els = {
@@ -144,6 +407,7 @@ function cardHTML(p) {
   const visited = p.status === 'visited';
   return `
   <article class="place ${visited ? 'is-visited' : 'is-want'}" data-id="${p.id}">
+    ${mapHTML(p)}
     <div class="place-head">
       <span class="cat" aria-hidden="true">${cat.emoji}</span>
       <div class="place-title">
@@ -272,6 +536,8 @@ els.list.addEventListener('click', (e) => {
   }
 
   persist(places);
+  if (action === 'delete') queueDelete(place.id);
+  else queueUpsert([place]);
   render();
 });
 
@@ -289,6 +555,10 @@ function openModal(place) {
   if (statusRadio) statusRadio.checked = true;
   $('#f-fav').checked = !!place?.favorite;
   $('#f-notes').value = place?.notes ?? '';
+  $('#f-lat').value = place?.lat ?? '';
+  $('#f-lon').value = place?.lon ?? '';
+  $('#f-zoom').value = place?.zoom ?? '';
+  coordHint();
   els.modal.classList.add('open');
   $('#f-name').focus();
 }
@@ -311,14 +581,22 @@ els.form.addEventListener('submit', (e) => {
     date: $('#f-date').value,
     favorite: $('#f-fav').checked,
     notes: $('#f-notes').value.trim(),
+    lat: $('#f-lat').value || '',
+    lon: $('#f-lon').value || '',
+    zoom: $('#f-zoom').value || '',
   };
   if (!data.name || !data.city) return;
 
   if (editingId) {
     const p = places.find((x) => x.id === editingId);
-    if (p) Object.assign(p, normalize({ ...p, ...data }));
+    if (p) {
+      Object.assign(p, normalize({ ...p, ...data }));
+      queueUpsert([p]);
+    }
   } else {
-    places.push(normalize({ ...data, id: uid(), createdAt: Date.now() }));
+    const created = normalize({ ...data, id: uid(), createdAt: Date.now() });
+    places.push(created);
+    queueUpsert([created]);
   }
   persist(places);
   closeModal();
@@ -375,6 +653,7 @@ $('#import-input').addEventListener('change', async (e) => {
     if (confirm(`Replace your ${places.length} places with the ${data.length} in this file?`)) {
       places = data.map(normalize);
       persist(places);
+      queueUpsert(places);
       render();
     }
   } catch {
@@ -384,10 +663,52 @@ $('#import-input').addEventListener('change', async (e) => {
 
 $('#reset-btn').addEventListener('click', () => {
   if (places.length && !confirm('Clear ALL places and start fresh? This cannot be undone.')) return;
+  const gone = places.map((p) => p.id);
   places = [];
   persist(places);
+  gone.forEach(queueDelete);
   render();
+});
+
+/* ---------- autocomplete (Photon / OpenStreetMap — open source, free, no key) ---------- */
+function coordHint() {
+  $('#f-coord-hint').hidden = !($('#f-lat').value && $('#f-lon').value);
+}
+
+attachAutocomplete($('#f-name'), $('#ac-name'), {
+  main: (r) => r.name || r.street || 'unnamed place',
+  sub: (r) => [r.city || r.district || r.county || r.state, r.country].filter(Boolean).join(', '),
+}, (r) => {
+  if (r.name) $('#f-name').value = r.name;
+  const city = r.city || r.district || r.county || r.state;
+  if (city) $('#f-city').value = city;
+  if (r.country) $('#f-country').value = r.country;
+  if (r.lat && r.lon) {
+    $('#f-lat').value = r.lat;
+    $('#f-lon').value = r.lon;
+    $('#f-zoom').value = guessZoom(r);
+  }
+  const cat = categoryFromOSM(r);
+  if (cat) $('#f-category').value = cat;
+  coordHint();
+});
+
+attachAutocomplete($('#f-city'), $('#ac-city'), {
+  layers: ['city', 'locality', 'district'],
+  main: (r) => r.name,
+  sub: (r) => [r.state, r.country].filter(Boolean).join(', '),
+}, (r) => {
+  if (r.name) $('#f-city').value = r.name;
+  if (r.country) $('#f-country').value = r.country;
+  if (r.lat && r.lon && !$('#f-lat').value) { // don’t clobber more precise POI coords
+    $('#f-lat').value = r.lat;
+    $('#f-lon').value = r.lon;
+    $('#f-zoom').value = guessZoom(r);
+  }
+  coordHint();
 });
 
 /* ---------- go ---------- */
 render();
+cloudStatus();
+syncFromCloud();

@@ -30,13 +30,15 @@
       <button type="button" data-tab="visited"></button>
       <button type="button" data-tab="want"></button>
     </nav>
+      <span class="cloud" id="cloud" hidden></span>
     <button type="button" class="btn primary" id="add-btn">＋ add a place</button>
   </div>
 
   <main id="groups"></main>
 
   <footer class="foot">
-    <p>made with 🪶 · your places live in this browser only (localStorage)</p>
+    <p>made with 🪶 · places sync to a little Supabase cloud ☁️ (with a local copy in this browser)</p>
+    <p class="credits">place search &amp; maps: <a href="https://photon.komoot.io" target="_blank" rel="noopener">Photon</a> · data &amp; tiles © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a></p>
     <p>
       <button type="button" class="link" id="export-btn">⬇︎ backup</button>
       <label class="link" for="import-input">⬆︎ restore</label>
@@ -50,17 +52,26 @@
       <h2 id="modal-title">add a place ✈️</h2>
       <form id="place-form">
         <label>place name
-          <input id="f-name" type="text" required maxlength="90" placeholder="e.g. Sydney Opera House" autocomplete="off">
+          <span class="ac-wrap">
+            <input id="f-name" type="text" required maxlength="90" placeholder="start typing… e.g. Sydney Opera House" autocomplete="off" spellcheck="false">
+            <span class="ac-drop" id="ac-name" hidden></span>
+          </span>
+          <span class="ac-hint" id="f-coord-hint" hidden>📍 found on OpenStreetMap — it’ll get a mini map ✨</span>
         </label>
 
         <div class="row">
           <label>city / area
-            <input id="f-city" type="text" required maxlength="60" placeholder="e.g. Sydney">
+            <span class="ac-wrap">
+              <input id="f-city" type="text" required maxlength="60" placeholder="e.g. Sydney" autocomplete="off" spellcheck="false">
+              <span class="ac-drop" id="ac-city" hidden></span>
+            </span>
           </label>
           <label>country
             <input id="f-country" type="text" maxlength="60" placeholder="e.g. Australia">
           </label>
         </div>
+
+        <input type="hidden" id="f-lat"><input type="hidden" id="f-lon"><input type="hidden" id="f-zoom">
 
         <div class="row">
           <label>kind of place
