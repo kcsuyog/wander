@@ -36,6 +36,23 @@ const CATEGORIES = [
 ];
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 
+/* ---------- travellers (the main couple 💞) ---------- */
+const TRAVELLERS = [
+  { id: 'us', name: 'us (Suyog & Susmita)', short: 'us', emoji: '💞' },
+  { id: 'suyog', name: 'Suyog', short: 'Suyog', emoji: '🧑' },
+  { id: 'susmita', name: 'Susmita', short: 'Susmita', emoji: '👩' },
+];
+const traveller = (id) => TRAVELLERS.find((t) => t.id === id);
+function whoNames(p) {
+  return (Array.isArray(p.who) && p.who.length ? p.who : ['us'])
+    .map(traveller)
+    .filter(Boolean)
+    .map((t) => `${t.emoji} ${t.short}`);
+}
+function whoText(p) {
+  return whoNames(p).join(' + ');
+}
+
 /* ---------- place search (Photon — open-source geocoder over OSM, no key, no billing) ---------- */
 const PHOTON_URL = 'https://photon.komoot.io/api/';
 
@@ -175,15 +192,15 @@ function mapHTML(p) {
 
 /* ---------- sample data (shown on first run, delete freely) ---------- */
 const SEED = [
-  { name: 'Sydney Opera House', city: 'Sydney', country: 'Australia', category: 'landmark', status: 'visited', date: '2024-11-02', notes: 'Sat on the steps with a gelato while the sails turned gold. 🍦', favorite: true, lat: -33.8568, lon: 151.2153, zoom: 15 },
-  { name: 'Bondi → Coogee walk', city: 'Sydney', country: 'Australia', category: 'beach', status: 'visited', date: '2024-11-04', notes: 'Six kilometres of cliffs and little coves — swim stops mandatory.', favorite: false, lat: -33.8908, lon: 151.2743, zoom: 13 },
-  { name: 'Royal Botanic Garden', city: 'Sydney', country: 'Australia', category: 'park', status: 'visited', date: '2024-11-03', notes: 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.', favorite: false, lat: -33.8616, lon: 151.2167, zoom: 15 },
-  { name: 'The Grounds of Alexandria', city: 'Sydney', country: 'Australia', category: 'cafe', status: 'visited', date: '', notes: 'Coffee in a garden full of flowers and fairy lights.', favorite: false, lat: -33.9106, lon: 151.1943, zoom: 16 },
-  { name: 'Blue Mountains', city: 'Sydney', country: 'Australia', category: 'viewpoint', status: 'want', date: '', notes: 'Ride the Scenic World skyway over the Jamison Valley.', favorite: true, lat: -33.7286, lon: 150.3119, zoom: 13 },
-  { name: 'Manly ferry at sunset', city: 'Sydney', country: 'Australia', category: 'other', status: 'want', date: '', notes: 'Cheapest harbour cruise there is — sit up top at golden hour.', favorite: false, lat: -33.7955, lon: 151.2761, zoom: 14 },
-  { name: 'Laneway coffee crawl', city: 'Melbourne', country: 'Australia', category: 'cafe', status: 'visited', date: '2024-11-08', notes: 'Found a tiny roaster off Degraves St. Flat white, perfect.', favorite: false, lat: -37.817, lon: 144.9658, zoom: 16 },
-  { name: 'teamLab Planets', city: 'Tokyo', country: 'Japan', category: 'museum', status: 'want', date: '', notes: 'Barefoot, wading through glowing water. Book ahead!', favorite: true, lat: 35.653, lon: 139.7897, zoom: 15 },
-  { name: 'Yakitori under the arches', city: 'Tokyo', country: 'Japan', category: 'food', status: 'want', date: '', notes: 'Yurakucho at night — smoke, chatter, cold beer.', favorite: false, lat: 35.6748, lon: 139.7617, zoom: 15 },
+  { name: 'Sydney Opera House', city: 'Sydney', country: 'Australia', category: 'landmark', status: 'visited', date: '2024-11-02', who: ['us'], notes: 'Sat on the steps with a gelato while the sails turned gold. 🍦', favorite: true, lat: -33.8568, lon: 151.2153, zoom: 15 },
+  { name: 'Bondi → Coogee walk', city: 'Sydney', country: 'Australia', category: 'beach', status: 'visited', date: '2024-11-04', who: ['us'], notes: 'Six kilometres of cliffs and little coves — swim stops mandatory.', favorite: false, lat: -33.8908, lon: 151.2743, zoom: 13 },
+  { name: 'Royal Botanic Garden', city: 'Sydney', country: 'Australia', category: 'park', status: 'visited', date: '2024-11-03', who: ['suyog'], notes: 'Ibis everywhere. Harbour view from Mrs Macquarie’s Chair.', favorite: false, lat: -33.8616, lon: 151.2167, zoom: 15 },
+  { name: 'The Grounds of Alexandria', city: 'Sydney', country: 'Australia', category: 'cafe', status: 'visited', date: '', who: ['susmita'], suggestedBy: 'Anisha', notes: 'Coffee in a garden full of flowers and fairy lights.', favorite: false, lat: -33.9106, lon: 151.1943, zoom: 16 },
+  { name: 'Blue Mountains', city: 'Sydney', country: 'Australia', category: 'viewpoint', status: 'want', date: '', who: ['us'], suggestedBy: 'Komal di', notes: 'Ride the Scenic World skyway over the Jamison Valley.', favorite: true, lat: -33.7286, lon: 150.3119, zoom: 13 },
+  { name: 'Manly ferry at sunset', city: 'Sydney', country: 'Australia', category: 'other', status: 'want', date: '', who: ['us'], notes: 'Cheapest harbour cruise there is — sit up top at golden hour.', favorite: false, lat: -33.7955, lon: 151.2761, zoom: 14 },
+  { name: 'Laneway coffee crawl', city: 'Melbourne', country: 'Australia', category: 'cafe', status: 'visited', date: '2024-11-08', who: ['us'], notes: 'Found a tiny roaster off Degraves St. Flat white, perfect.', favorite: false, lat: -37.817, lon: 144.9658, zoom: 16 },
+  { name: 'teamLab Planets', city: 'Tokyo', country: 'Japan', category: 'museum', status: 'want', date: '', who: ['us'], suggestedBy: 'Rahul', notes: 'Barefoot, wading through glowing water. Book ahead!', favorite: true, lat: 35.653, lon: 139.7897, zoom: 15 },
+  { name: 'Yakitori under the arches', city: 'Tokyo', country: 'Japan', category: 'food', status: 'want', date: '', who: ['us'], notes: 'Yurakucho at night — smoke, chatter, cold beer.', favorite: false, lat: 35.6748, lon: 139.7617, zoom: 15 },
 ];
 
 /* ---------- state ---------- */
@@ -204,6 +221,9 @@ function normalize(p) {
     lat: num(p.lat),
     lon: num(p.lon),
     zoom: num(p.zoom),
+    who: (Array.isArray(p.who) ? p.who : [])
+      .filter((w) => TRAVELLERS.some((t) => t.id === w)),
+    suggestedBy: String(p.suggestedBy || '').trim().slice(0, 120),
     createdAt: p.createdAt || Date.now(),
   };
 }
@@ -269,6 +289,8 @@ const cloudRow = (p) => ({
   lat: p.lat === '' ? null : p.lat,
   lon: p.lon === '' ? null : p.lon,
   zoom: p.zoom === '' ? null : p.zoom,
+  who: p.who && p.who.length ? p.who : ['us'],
+  suggestedBy: p.suggestedBy || '',
   createdAt: p.createdAt || Date.now(),
 });
 
@@ -374,6 +396,13 @@ $('#f-category').innerHTML = CATEGORIES.map(
   (c) => `<option value="${c.id}">${c.emoji} ${esc(c.label)}</option>`
 ).join('');
 
+$('#who-chips').innerHTML = TRAVELLERS.map(
+  (t) => `<label class="who-chip" title="${esc(t.name)}">
+    <input type="checkbox" class="who-check" value="${t.id}">
+    <span>${t.emoji} ${esc(t.short)}</span>
+  </label>`
+).join('');
+
 /* ---------- grouping ---------- */
 const cityKey = (p) => (p.city || '').trim().toLowerCase() || 'somewhere';
 
@@ -412,7 +441,7 @@ function cardHTML(p) {
       <span class="cat" aria-hidden="true">${cat.emoji}</span>
       <div class="place-title">
         <h3>${esc(p.name)}</h3>
-        <p class="meta">${esc(cat.label)}${p.date ? ` · <time>${esc(formatDate(p.date))}</time>` : ''}</p>
+        <p class="meta">${esc(whoText(p))} · ${esc(cat.label)}${p.date ? ` · <time>${esc(formatDate(p.date))}</time>` : ''}</p>
       </div>
       <button type="button" class="star ${p.favorite ? 'on' : ''}" data-action="fav"
         aria-label="${p.favorite ? 'remove favourite' : 'mark as favourite'}" title="favourite">${p.favorite ? '⭐' : '☆'}</button>
@@ -420,6 +449,7 @@ function cardHTML(p) {
     ${p.notes ? `<p class="notes">${esc(p.notes)}</p>` : ''}
     <footer class="place-foot">
       <span class="status-badge ${visited ? 'ok' : 'dream'}">${visited ? '✨ been!' : '💭 someday'}</span>
+      ${p.suggestedBy ? `<span class="status-badge sug" title="who suggested this place">💬 ${esc(p.suggestedBy)}</span>` : ''}
       <span class="spacer"></span>
       <button type="button" class="ghost toggle" data-action="toggle"
         title="${visited ? 'Move to someday list' : 'Mark as visited'}">${visited ? '→ 💭 someday' : '→ ✨ been!'}</button>
@@ -472,7 +502,7 @@ function render() {
     if (view.tab === 'visited' && p.status !== 'visited') return false;
     if (view.tab === 'want' && p.status !== 'want') return false;
     if (!q) return true;
-    return [p.name, p.city, p.country, p.notes, catOf(p.category).label]
+    return [p.name, p.city, p.country, p.notes, catOf(p.category).label, whoText(p), p.suggestedBy]
       .join(' ')
       .toLowerCase()
       .includes(q);
@@ -558,6 +588,9 @@ function openModal(place) {
   $('#f-lat').value = place?.lat ?? '';
   $('#f-lon').value = place?.lon ?? '';
   $('#f-zoom').value = place?.zoom ?? '';
+  const who = place?.who?.length ? place.who : ['us'];
+  $$('.who-check').forEach((cb) => { cb.checked = who.includes(cb.value); });
+  $('#f-suggested').value = place?.suggestedBy ?? '';
   coordHint();
   els.modal.classList.add('open');
   $('#f-name').focus();
@@ -584,6 +617,8 @@ els.form.addEventListener('submit', (e) => {
     lat: $('#f-lat').value || '',
     lon: $('#f-lon').value || '',
     zoom: $('#f-zoom').value || '',
+    who: $$('.who-check').filter((cb) => cb.checked).map((cb) => cb.value),
+    suggestedBy: $('#f-suggested').value.trim(),
   };
   if (!data.name || !data.city) return;
 

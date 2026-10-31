@@ -478,6 +478,34 @@ main { padding: .4rem 0 3rem; }
 }
 .favline input { width: 1.05rem; height: 1.05rem; accent-color: var(--pink-deep); cursor: pointer; margin: 0; }
 
+/* ---------- who travelled / suggested by ---------- */
+.who-field { border: none; padding: 0; margin: 0 0 .85rem; }
+.who-field legend {
+  font-weight: 700;
+  font-size: .84rem;
+  color: var(--soft-ink);
+  padding: 0;
+  margin-bottom: .45rem;
+}
+.who-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.who-chip { position: relative; }
+.who-chip input { position: absolute; inset: 0; opacity: 0; cursor: pointer; margin: 0; }
+.who-chip span {
+  display: inline-block;
+  padding: .45rem .9rem;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: .85rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: .15s ease;
+}
+.who-chip input:checked + span { background: #fde9ef; border-color: var(--pink); color: #c2587b; }
+.who-chip input:focus-visible + span { outline: 2px dashed var(--pink-deep); outline-offset: 2px; }
+
+.status-badge.sug { background: #f3ecdf; color: #8a7660; }
+
 .modal-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.1rem; }
 
 @media (max-width: 560px) {

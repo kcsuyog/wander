@@ -30,6 +30,8 @@ create table public.places (
   "status" text not null default 'want' check ("status" in ('visited','want')),
   "date" text not null default '', "favorite" boolean not null default false,
   "notes" text not null default '',
+  "who" text[] not null default '{us}'::text[],        -- 💞 us | suyog | susmita
+  "suggestedBy" text not null default '',             -- 💬 who suggested it
   "lat" double precision, "lon" double precision, "zoom" double precision,
   "createdAt" bigint not null default 0
 );
@@ -58,8 +60,10 @@ open index.html                       # macOS
 - **Add places** with name, city/area, country, category, date, notes and a ⭐ favourite
 - **Two statuses** — ✨ been! / 💭 someday — with a one-click toggle (marking a place "been"
   auto-stamps today's date)
+- **Who travelled** — 💞 us (Suyog & Susmita), 🧑 Suyog, 👩 Susmita chips on every place
+- **Suggested by** — remember who tipped you off about a place 💬
 - **Grouped by city**, with per-city "been / someday" counts
-- **Live search** across names, cities, countries, notes and categories (press `/` to jump to search)
+- **Live search** across names, cities, countries, notes, people and categories (press `/` to jump to search)
 - **Filter tabs** — all / been / someday — plus little stats up top
 - **Backup / restore** as JSON, and a "start over" reset — all from the footer
 
