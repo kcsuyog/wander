@@ -136,6 +136,23 @@ body {
 }
 .cloud[hidden] { display: none; }
 
+/* ---------- signed-in chip 🔐 ---------- */
+.me {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  font-size: .85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.me img {
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgb(0 0 0 / .25);
+  vertical-align: middle;
+}
+.me .me-name { color: var(--ink); }
+.me .link { color: var(--muted); text-decoration: underline; cursor: pointer; }
+
 .btn {
   font: inherit;
   font-weight: 700;
