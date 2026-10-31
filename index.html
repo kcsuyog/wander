@@ -12,6 +12,16 @@
 </head>
 <body>
 
+  <div class="sky" aria-hidden="true">
+    <div class="sky-sun" data-depth="10"><span class="sun-ball"></span></div>
+    <div class="cloud c1" data-depth="22"></div>
+    <div class="cloud c2" data-depth="14"></div>
+    <div class="cloud c3" data-depth="30"></div>
+    <div class="cloud c4" data-depth="8"></div>
+    <div class="sky-birds" data-depth="26">🕊️🕊️</div>
+    <div class="sky-plane" data-depth="16">✈️</div>
+  </div>
+
   <header class="top">
     <div class="brand">
       <h1>🪶 Wander</h1>
@@ -29,6 +39,10 @@
       <button type="button" data-tab="all"></button>
       <button type="button" data-tab="visited"></button>
       <button type="button" data-tab="want"></button>
+    </nav>
+    <nav class="tabs view-tabs" aria-label="View">
+      <button type="button" data-view="grid">🗂 by city</button>
+      <button type="button" data-view="timeline">📜 timeline</button>
     </nav>
       <span class="cloud" id="cloud" hidden></span>
     <button type="button" class="btn primary" id="add-btn">＋ add a place</button>
@@ -96,6 +110,14 @@
           <input id="f-suggested" type="text" maxlength="120" placeholder="who told you about it? e.g. Riya 🙌" autocomplete="off">
         </label>
 
+        <fieldset class="who-field photos-field">
+          <legend>photos 📸 <small>jpg/png/webp/gif · up to 10MB each</small></legend>
+          <div class="photo-row" id="f-photo-row"></div>
+          <label class="photo-add">＋ add photos
+            <input type="file" id="f-photo-input" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif" multiple hidden>
+          </label>
+        </fieldset>
+
         <label class="favline"><input type="checkbox" id="f-fav"> ⭐ one of my favourites</label>
 
         <label>little notes
@@ -108,6 +130,14 @@
         </div>
       </form>
     </div>
+  </div>
+
+  <div class="lightbox" id="lightbox" hidden>
+    <button type="button" class="lb-btn lb-close" id="lb-close" aria-label="close">✕</button>
+    <button type="button" class="lb-btn lb-prev" id="lb-prev" aria-label="previous photo">‹</button>
+    <button type="button" class="lb-btn lb-next" id="lb-next" aria-label="next photo">›</button>
+    <img id="lb-img" alt="">
+    <p class="lb-cap" id="lb-cap"></p>
   </div>
 
   <script src="app.js"></script>

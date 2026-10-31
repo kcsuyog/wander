@@ -224,6 +224,7 @@ function normalize(p) {
     who: (Array.isArray(p.who) ? p.who : [])
       .filter((w) => TRAVELLERS.some((t) => t.id === w)),
     suggestedBy: String(p.suggestedBy || '').trim().slice(0, 120),
+    photos: (Array.isArray(p.photos) ? p.photos : []).filter((u) => typeof u === 'string' && u).slice(0, 40),
     createdAt: p.createdAt || Date.now(),
   };
 }
@@ -252,7 +253,13 @@ function loadPlaces() {
 }
 
 let places = loadPlaces();
-let view = { search: '', tab: 'all' };
+let view = {
+  search: '',
+  tab: 'all',
+  mode: (() => {
+    try { return localStorage.getItem('wander.view') === 'timeline' ? 'timeline' : 'grid'; } catch { return 'grid'; }
+  })(),
+};
 let editingId = null;
 
 /* ---------- cloud sync (Supabase) ----------
@@ -262,18 +269,44 @@ let editingId = null;
 const SUPABASE_URL = 'https://eozbynvaoidivxudplxr.supabase.co';
 const SUPABASE_PUB_KEY = 'sb_publishable_7_5RUdFNFFxlJFqZzAVh6w_8NNXio0j';
 
-async function cloudFetch(path, opts = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+async function sbFetch(path, opts = {}) {
+  const res = await fetch(`${SUPABASE_URL}/${path}`, {
     ...opts,
     headers: {
       apikey: SUPABASE_PUB_KEY,
       Authorization: `Bearer ${SUPABASE_PUB_KEY}`,
-      ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(opts.body && !(opts.body instanceof File) ? { 'Content-Type': 'application/json' } : {}),
       ...(opts.headers || {}),
     },
   });
   if (!res.ok) throw new Error(`supabase ${res.status}`);
   return res;
+}
+
+async function cloudFetch(path, opts = {}) {
+  return sbFetch(`rest/v1/${path}`, opts);
+}
+
+/* ---------- photo storage (public bucket "photos" on Supabase) ---------- */
+const PHOTO_URL_PREFIX = `${SUPABASE_URL}/storage/v1/object/public/photos/`;
+
+async function uploadPhoto(placeId, file) {
+  const ext =
+    ((file.name.includes('.') ? file.name.split('.').pop() : '') || 'jpg')
+      .toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'jpg';
+  const path = `${placeId}/${uid()}.${ext}`;
+  await sbFetch(`storage/v1/object/photos/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'image/jpeg', 'x-upsert': 'true' },
+    body: file,
+  });
+  return `${PHOTO_URL_PREFIX}${path}`;
+}
+
+async function deletePhotoObject(url) {
+  if (!url.startsWith(PHOTO_URL_PREFIX)) return;
+  const path = url.slice(PHOTO_URL_PREFIX.length);
+  await sbFetch(`storage/v1/object/photos/${path}`, { method: 'DELETE' });
 }
 
 const cloudRow = (p) => ({
@@ -291,6 +324,7 @@ const cloudRow = (p) => ({
   zoom: p.zoom === '' ? null : p.zoom,
   who: p.who && p.who.length ? p.who : ['us'],
   suggestedBy: p.suggestedBy || '',
+  photos: p.photos || [],
   createdAt: p.createdAt || Date.now(),
 });
 
@@ -431,12 +465,17 @@ function emptyHTML(big, title, sub, actionsHTML) {
   </div>`;
 }
 
-function cardHTML(p) {
+function cardHTML(p, i) {
   const cat = catOf(p.category);
   const visited = p.status === 'visited';
+  const animCls = i == null ? '' : ' enter';
+  const animStyle = i == null ? '' : ` style="--d:${Math.min(i * 45, 360)}ms"`;
+  const cover = p.photos.length
+    ? `<button type="button" class="cover" data-action="photo" data-idx="0" aria-label="photos of ${esc(p.name)}" style="background-image:url('${esc(p.photos[0])}')">${p.photos.length > 1 ? `<span class="photo-count">📷 ${p.photos.length}</span>` : ''}</button>`
+    : mapHTML(p);
   return `
-  <article class="place ${visited ? 'is-visited' : 'is-want'}" data-id="${p.id}">
-    ${mapHTML(p)}
+  <article class="place ${visited ? 'is-visited' : 'is-want'}${animCls}" data-id="${p.id}"${animStyle}>
+    ${cover}
     <div class="place-head">
       <span class="cat" aria-hidden="true">${cat.emoji}</span>
       <div class="place-title">
@@ -459,10 +498,13 @@ function cardHTML(p) {
   </article>`;
 }
 
-function sectionHTML(allGroup, items) {
+function sectionHTML(allGroup, items, animate) {
   const done = allGroup.items.filter((p) => p.status === 'visited').length;
   const dream = allGroup.items.length - done;
-  const cards = [...items].sort((a, b) => a.name.localeCompare(b.name)).map(cardHTML).join('');
+  const cards = [...items]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p, i) => cardHTML(p, animate ? i : null))
+    .join('');
   return `
   <section class="group">
     <header class="group-head">
@@ -482,7 +524,69 @@ function sectionHTML(allGroup, items) {
   </section>`;
 }
 
-function render() {
+/* ---------- timeline view (chronological journal of the two of you) ---------- */
+function tlItemHTML(p, i) {
+  const cat = catOf(p.category);
+  const visited = p.status === 'visited';
+  const animCls = i == null ? '' : ' enter';
+  const animStyle = i == null ? '' : ` style="--d:${Math.min(i * 40, 320)}ms"`;
+  const cover = p.photos.length
+    ? `<button type="button" class="tl-cover" data-action="photo" data-idx="0" aria-label="photos of ${esc(p.name)}" style="background-image:url('${esc(p.photos[0])}')"></button>`
+    : `<span class="tl-cover emoji-cat" aria-hidden="true">${cat.emoji}</span>`;
+  const thumbs = p.photos.length > 1
+    ? `<div class="tl-photos">${p.photos.map((u, k) => `
+        <button type="button" class="tl-thumb" data-action="photo" data-idx="${k}" aria-label="photo ${k + 1} of ${esc(p.name)}" style="background-image:url('${esc(u)}')"></button>`).join('')}</div>`
+    : '';
+  return `
+  <div class="tl-item${visited ? '' : ' dream'}${animCls}" data-id="${p.id}"${animStyle}>
+    <div class="tl-card">
+      ${cover}
+      <div class="tl-body">
+        <div class="tl-top">
+          <h3>${esc(p.name)}</h3>
+          ${p.date ? `<span class="tl-date"><time>${esc(formatDate(p.date))}</time></span>` : ''}
+        </div>
+        <p class="meta">${esc(whoText(p))} · 📍 ${esc(p.city)}${p.country ? `, ${esc(p.country)}` : ''} · ${esc(cat.label)}</p>
+        ${p.notes ? `<p class="notes">${esc(p.notes)}</p>` : ''}
+        ${p.suggestedBy ? `<p class="meta sug">💬 suggested by ${esc(p.suggestedBy)}</p>` : ''}
+        ${thumbs}
+      </div>
+    </div>
+  </div>`;
+}
+
+function timelineHTML(visible, animate) {
+  const dated = visible.filter((p) => p.date).sort((a, b) => b.date.localeCompare(a.date));
+  const undated = visible.filter((p) => !p.date && p.status === 'visited');
+  const someday = visible.filter((p) => p.status === 'want' && !p.date);
+  if (!dated.length && !undated.length && !someday.length) return '';
+
+  const chunks = [];
+  let year = null;
+  let i = 0;
+  const seq = (p) => tlItemHTML(p, animate ? i++ : null);
+
+  for (const p of dated) {
+    const y = p.date.slice(0, 4);
+    if (y !== year) {
+      year = y;
+      chunks.push(`<h3 class="tl-year"><span>${y} ✈️</span></h3>`);
+    }
+    chunks.push(seq(p));
+  }
+  if (undated.length) {
+    chunks.push(`<h3 class="tl-year dream"><span>✨ been · no date yet</span></h3>`);
+    undated.forEach((p) => chunks.push(seq(p)));
+  }
+  if (someday.length) {
+    chunks.push(`<h3 class="tl-year dream"><span>💭 someday</span></h3>`);
+    someday.forEach((p) => chunks.push(seq(p)));
+  }
+  return `<div class="timeline">${chunks.join('')}</div>`;
+}
+
+function render(opts = {}) {
+  const animate = !!opts.animate;
   const visitedCount = places.filter((p) => p.status === 'visited').length;
   const cityCount = new Set(places.map(cityKey)).size;
   els.stats.innerHTML = places.length
@@ -527,11 +631,22 @@ function render() {
     return;
   }
 
+  if (view.mode === 'timeline') {
+    const html = timelineHTML(visible, animate);
+    els.list.innerHTML = html || emptyHTML(
+      '🪶',
+      'no places yet!',
+      'add your first spot — the timeline writes itself ✨',
+      '<button type="button" class="btn primary" data-action="add">＋ add a place</button>'
+    );
+    return;
+  }
+
   const groupsAll = groupByCity(places);
   const groupsVis = groupByCity(visible);
   els.list.innerHTML = [...groupsVis.keys()]
     .sort((a, b) => a.localeCompare(b))
-    .map((key) => sectionHTML(groupsAll.get(key), groupsVis.get(key).items))
+    .map((key) => sectionHTML(groupsAll.get(key), groupsVis.get(key).items, animate))
     .join('');
 }
 
@@ -552,6 +667,10 @@ els.list.addEventListener('click', (e) => {
   const place = places.find((p) => p.id === btn.closest('[data-id]')?.dataset.id);
   if (!place) return;
 
+  if (action === 'photo') {
+    return openLightbox(place.id, +btn.dataset.idx || 0);
+  }
+
   if (action === 'fav') {
     place.favorite = !place.favorite;
   } else if (action === 'toggle') {
@@ -562,6 +681,7 @@ els.list.addEventListener('click', (e) => {
     return openModal(place);
   } else if (action === 'delete') {
     if (!confirm(`say goodbye to “${place.name}”? 🥺`)) return;
+    (place.photos || []).forEach((u) => deletePhotoObject(u).catch(() => {}));
     places = places.filter((p) => p.id !== place.id);
   }
 
@@ -569,6 +689,80 @@ els.list.addEventListener('click', (e) => {
   if (action === 'delete') queueDelete(place.id);
   else queueUpsert([place]);
   render();
+});
+
+/* ---------- lightbox ---------- */
+let lb = { placeId: null, idx: 0 };
+
+function openLightbox(placeId, idx = 0) {
+  const p = places.find((x) => x.id === placeId);
+  if (!p || !p.photos.length) return;
+  lb = { placeId, idx: Math.max(0, Math.min(idx, p.photos.length - 1)) };
+  $('#lightbox').hidden = false;
+  paintLightbox();
+}
+
+function paintLightbox() {
+  const p = places.find((x) => x.id === lb.placeId);
+  if (!p || !p.photos.length) return closeLightbox();
+  const n = p.photos.length;
+  lb.idx = ((lb.idx % n) + n) % n;
+  $('#lb-img').src = p.photos[lb.idx];
+  $('#lb-img').alt = p.name;
+  $('#lb-cap').textContent = `${p.name} · ${lb.idx + 1}/${n}`;
+}
+
+function closeLightbox() {
+  $('#lightbox').hidden = true;
+}
+
+$('#lb-close').addEventListener('click', closeLightbox);
+$('#lb-prev').addEventListener('click', () => { lb.idx -= 1; paintLightbox(); });
+$('#lb-next').addEventListener('click', () => { lb.idx += 1; paintLightbox(); });
+$('#lightbox').addEventListener('click', (e) => {
+  if (e.target.id === 'lightbox') closeLightbox();
+});
+
+/* ---------- photos in the form ---------- */
+let stagedPhotos = [];      // new files waiting for upload
+let keptPhotos = [];        // already-saved photo urls kept as-is
+let removedPhotoUrls = [];  // removed urls → delete from storage on save
+
+function paintPhotoRow() {
+  const row = $('#f-photo-row');
+  row.innerHTML =
+    keptPhotos.map((u, i) => `
+      <span class="photo-thumb" style="background-image:url('${esc(u)}')" title="saved photo">
+        <button type="button" class="rm" data-rm-kept="${i}" aria-label="remove this photo">✕</button>
+      </span>`).join('') +
+    stagedPhotos.map((s, i) => `
+      <span class="photo-thumb" style="background-image:url('${esc(s.url)}')" title="new photo (not uploaded yet)">
+        <button type="button" class="rm" data-rm-new="${i}" aria-label="remove this photo">✕</button>
+      </span>`).join('');
+}
+
+$('#f-photo-row').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-rm-kept],[data-rm-new]');
+  if (!rm) return;
+  if (rm.dataset.rmKept != null) {
+    removedPhotoUrls.push(keptPhotos.splice(+rm.dataset.rmKept, 1)[0]);
+  } else {
+    const s = stagedPhotos.splice(+rm.dataset.rmNew, 1)[0];
+    if (s) URL.revokeObjectURL(s.url);
+  }
+  paintPhotoRow();
+});
+
+$('#f-photo-input').addEventListener('change', (e) => {
+  for (const f of e.target.files) {
+    if (f.size > 10 * 1024 * 1024) {
+      alert(`“${f.name}” is over 10MB 🙈 — skipped`);
+      continue;
+    }
+    stagedPhotos.push({ file: f, url: URL.createObjectURL(f) });
+  }
+  e.target.value = '';
+  paintPhotoRow();
 });
 
 /* ---------- modal ---------- */
@@ -591,6 +785,10 @@ function openModal(place) {
   const who = place?.who?.length ? place.who : ['us'];
   $$('.who-check').forEach((cb) => { cb.checked = who.includes(cb.value); });
   $('#f-suggested').value = place?.suggestedBy ?? '';
+  keptPhotos = [...(place?.photos || [])];
+  stagedPhotos = [];
+  removedPhotoUrls = [];
+  paintPhotoRow();
   coordHint();
   els.modal.classList.add('open');
   $('#f-name').focus();
@@ -599,11 +797,24 @@ function openModal(place) {
 function closeModal() {
   els.modal.classList.remove('open');
   editingId = null;
+  stagedPhotos.forEach((s) => URL.revokeObjectURL(s.url));
+  stagedPhotos = [];
 }
 
-els.form.addEventListener('submit', (e) => {
+els.form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!els.form.reportValidity()) return;
+
+  // upload new photos to the public bucket first (they need a place id)
+  const placeId = editingId || uid();
+  const uploadedPhotos = [];
+  for (const s of stagedPhotos) {
+    try {
+      uploadedPhotos.push(await uploadPhoto(placeId, s.file));
+    } catch {
+      alert(`couldn't upload “${s.file.name}” 🙈 — it was skipped`);
+    }
+  }
 
   const data = {
     name: $('#f-name').value.trim(),
@@ -619,6 +830,7 @@ els.form.addEventListener('submit', (e) => {
     zoom: $('#f-zoom').value || '',
     who: $$('.who-check').filter((cb) => cb.checked).map((cb) => cb.value),
     suggestedBy: $('#f-suggested').value.trim(),
+    photos: [...keptPhotos, ...uploadedPhotos],
   };
   if (!data.name || !data.city) return;
 
@@ -629,13 +841,18 @@ els.form.addEventListener('submit', (e) => {
       queueUpsert([p]);
     }
   } else {
-    const created = normalize({ ...data, id: uid(), createdAt: Date.now() });
+    const created = normalize({ ...data, id: placeId, createdAt: Date.now() });
     places.push(created);
     queueUpsert([created]);
   }
+
+  // tidy up photos the user removed from an existing place
+  removedPhotoUrls.forEach((u) => deletePhotoObject(u).catch(() => {}));
+  removedPhotoUrls = [];
+
   persist(places);
   closeModal();
-  render();
+  render({ animate: true });
 });
 
 els.addBtn.addEventListener('click', () => openModal());
@@ -644,8 +861,14 @@ els.modal.addEventListener('click', (e) => {
   if (e.target === els.modal) closeModal();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
-  if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+  const lbOpen = !$('#lightbox').hidden;
+  if (e.key === 'Escape') { closeModal(); closeLightbox(); }
+  if (lbOpen && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault();
+    lb.idx += e.key === 'ArrowRight' ? 1 : -1;
+    paintLightbox();
+  }
+  if (e.key === '/' && !lbOpen && !e.metaKey && !e.ctrlKey && !e.altKey) {
     const t = document.activeElement;
     const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     if (!typing) {
@@ -664,7 +887,16 @@ els.search.addEventListener('input', () => {
 els.tabs.forEach((btn) =>
   btn.addEventListener('click', () => {
     view.tab = btn.dataset.tab;
-    render();
+    render({ animate: true });
+  })
+);
+
+$$('[data-view]').forEach((btn) =>
+  btn.addEventListener('click', () => {
+    view.mode = btn.dataset.view === 'timeline' ? 'timeline' : 'grid';
+    try { localStorage.setItem('wander.view', view.mode); } catch {}
+    $$('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === view.mode));
+    render({ animate: true });
   })
 );
 
@@ -698,11 +930,12 @@ $('#import-input').addEventListener('change', async (e) => {
 
 $('#reset-btn').addEventListener('click', () => {
   if (places.length && !confirm('Clear ALL places and start fresh? This cannot be undone.')) return;
+  places.forEach((p) => (p.photos || []).forEach((u) => deletePhotoObject(u).catch(() => {})));
   const gone = places.map((p) => p.id);
   places = [];
   persist(places);
   gone.forEach(queueDelete);
-  render();
+  render({ animate: true });
 });
 
 /* ---------- autocomplete (Photon / OpenStreetMap — open source, free, no key) ---------- */
@@ -743,7 +976,28 @@ attachAutocomplete($('#f-city'), $('#ac-city'), {
   coordHint();
 });
 
+/* ---------- parallax sky (pointer-driven, soft & smooth) ---------- */
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const layers = $$('.sky [data-depth]');
+  let tx = 0, ty = 0, cx = 0, cy = 0;
+  addEventListener('pointermove', (e) => {
+    tx = e.clientX / innerWidth - 0.5;
+    ty = e.clientY / innerHeight - 0.5;
+  }, { passive: true });
+  const tick = () => {
+    cx += (tx - cx) * 0.05;
+    cy += (ty - cy) * 0.05;
+    for (const el of layers) {
+      const d = +el.dataset.depth || 10;
+      el.style.transform = `translate3d(${(-cx * d).toFixed(1)}px, ${(-cy * d * 0.6).toFixed(1)}px, 0)`;
+    }
+    requestAnimationFrame(tick);
+  };
+  if (layers.length) requestAnimationFrame(tick);
+}
+
 /* ---------- go ---------- */
-render();
+$$('[data-view]').forEach((b) => b.classList.toggle('active', b.dataset.view === view.mode));
+render({ animate: true });
 cloudStatus();
 syncFromCloud();

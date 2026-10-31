@@ -32,12 +32,18 @@ create table public.places (
   "notes" text not null default '',
   "who" text[] not null default '{us}'::text[],        -- 💞 us | suyog | susmita
   "suggestedBy" text not null default '',             -- 💬 who suggested it
+  "photos" text[] not null default '{}'::text[],       -- 📸 public storage URLs
   "lat" double precision, "lon" double precision, "zoom" double precision,
   "createdAt" bigint not null default 0
 );
 alter table public.places enable row level security;
 -- + open SELECT / INSERT / UPDATE / DELETE policies for anon (see schema in the Supabase project)
 ```
+
+Photos upload straight from the browser to the public `photos` bucket
+(`POST /storage/v1/object/photos/<placeId>/<file>`) and are referenced by their public URL
+(`/storage/v1/object/public/photos/...`). The bucket allows images ≤ 10MB; open-mode policies
+let the `anon` role insert/select/delete objects in that bucket.
 
 ### Sign-in gate (optional, recommended if the list turns personal)
 
@@ -62,9 +68,16 @@ open index.html                       # macOS
   auto-stamps today's date)
 - **Who travelled** — 💞 us (Suyog & Susmita), 🧑 Suyog, 👩 Susmita chips on every place
 - **Suggested by** — remember who tipped you off about a place 💬
+- **Photos 📸** — attach photos to any place (stored in a public Supabase Storage bucket);
+  each card gets a cover photo + 📷 count, and a lightbox viewer (arrows/‹›, Esc) shows the gallery
+- **Two views** — 🗂 **by city** (grid) or 📜 **timeline**: a chronological journal grouped by
+  year (newest first), photos and dates inline, plus a 💭 someday section for dreams
 - **Grouped by city**, with per-city "been / someday" counts
 - **Live search** across names, cities, countries, notes, people and categories (press `/` to jump to search)
 - **Filter tabs** — all / been / someday — plus little stats up top
+- **Animated & parallax** — a fixed sky scene (drifting clouds, pulsing sun, birds, a plane)
+  with pointer-driven parallax layers, and staggered pop-in entrances for cards
+  (respects `prefers-reduced-motion`)
 - **Backup / restore** as JSON, and a "start over" reset — all from the footer
 
 ## Where data lives
