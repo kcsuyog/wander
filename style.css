@@ -66,7 +66,7 @@ body {
   align-items: center;
   gap: .6rem;
   padding: .7rem .35rem .8rem;
-  background: rgba(255, 250, 243, 0.82);
+  background: rgba(255, 250, 243, 0.92);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -566,10 +566,11 @@ main { padding: .4rem 0 3rem; }
 .cloud::before, .cloud::after { content: ''; position: absolute; background: #fff; border-radius: 50%; }
 .cloud::before { width: 56px; height: 56px; top: -26px; left: 24px; }
 .cloud::after { width: 42px; height: 42px; top: -16px; right: 26px; }
-.c1 { top: 13%; animation: drift 75s linear infinite; }
-.c2 { top: 32%; animation: drift 100s linear infinite; animation-delay: -45s; }
-.c3 { top: 7%; animation: drift 130s linear infinite; animation-delay: -80s; }
-.c4 { top: 22%; animation: drift 88s linear infinite; animation-delay: -20s; }
+/* clouds stay below the sticky toolbar strip so they never wash out the search */
+.c1 { top: 34%; animation: drift 75s linear infinite; }
+.c2 { top: 50%; animation: drift 100s linear infinite; animation-delay: -45s; }
+.c3 { top: 40%; animation: drift 130s linear infinite; animation-delay: -80s; }
+.c4 { top: 60%; animation: drift 88s linear infinite; animation-delay: -20s; }
 @keyframes drift { from { left: -30%; } to { left: 115%; } }
 
 .sky-birds { position: absolute; top: 19%; font-size: 1.15rem; letter-spacing: .4em; opacity: .55; animation: fly 34s linear infinite; animation-delay: -6s; }
