@@ -195,7 +195,7 @@ function loadPlaces() {
 function loadView() {
   let mode = null;
   try { mode = new URLSearchParams(location.search).get('view'); } catch {}
-  if (mode !== 'grid' && mode !== 'timeline') {
+  if (mode !== 'grid' && mode !== 'timeline' && mode !== 'map') {
     mode = 'grid';
     try { if (localStorage.getItem('wander.view') === 'timeline') mode = 'timeline'; } catch {}
   }
@@ -463,28 +463,212 @@ function Timeline({ visible, act }) {
   const dated = visible.filter((p) => p.date).sort((a, b) => b.date.localeCompare(a.date));
   const undated = visible.filter((p) => !p.date && p.status === 'visited');
   const someday = visible.filter((p) => p.status === 'want' && !p.date);
+
+  const monthLabel = (ym) => new Date(`${ym}-15T12:00:00`)
+    .toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  // count places per month for the header badge
+  const counts = new Map();
+  for (const p of dated) {
+    const m = p.date.slice(0, 7);
+    counts.set(m, (counts.get(m) || 0) + 1);
+  }
+
   const out = [];
-  let year = null;
+  let month = null;
   let i = 0;
   const push = (p) => out.push(html`<${TimelineItem} key=${p.id} p=${p} i=${i++} act=${act} />`);
   for (const p of dated) {
-    const y = p.date.slice(0, 4);
-    if (y !== year) {
-      year = y;
-      out.push(html`<h3 class="tl-year"><span>${y} ✈️</span></h3>`);
+    const m = p.date.slice(0, 7);
+    if (m !== month) {
+      month = m;
+      const c = counts.get(m);
+      out.push(html`
+        <div class="tl-month">
+          <span class="tl-month-chip">🗓 ${monthLabel(m)}</span>
+          <span class="tl-month-count">${c} place${c === 1 ? '' : 's'} · trip memories</span>
+        </div>`);
     }
     push(p);
   }
   if (undated.length) {
-    out.push(html`<h3 class="tl-year dream"><span>✨ been · no date yet</span></h3>`);
+    out.push(html`<div class="tl-month"><span class="tl-month-chip dream">✨ been · no date yet</span></div>`);
     undated.forEach(push);
   }
   if (someday.length) {
-    out.push(html`<h3 class="tl-year dream"><span>💭 someday</span></h3>`);
+    out.push(html`<div class="tl-month"><span class="tl-month-chip dream">💭 someday</span></div>`);
     someday.forEach(push);
   }
   if (!out.length) return null;
   return html`<div class="timeline">${out}</div>`;
+}
+
+/* ================= interactive map (custom slippy map on OSM tiles) =================
+   drag to pan · wheel to zoom · tap a pin for its card. No map library — the
+   same OSM tiles the mini previews use, projected with the mercator math
+   that already lives in this file (lonToTileX / latToTileY). */
+const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+const lonToPx = (lon, z) => lonToTileX(lon, z) * 256;
+const latToPx = (lat, z) => latToTileY(lat, z) * 256;
+const pxToLon = (px, z) => (px / 256 / Math.pow(2, z)) * 360 - 180;
+function pxToLat(py, z) {
+  const n = Math.PI - 2 * Math.PI * (py / 256 / Math.pow(2, z));
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+function MapView({ places, act }) {
+  const boxRef = useRef(null);
+  const [size, setSize] = useState({ w: 800, h: 520 });
+  const [view, setView] = useState(null);   // { lat, lon, z }
+  const [pick, setPick] = useState(null);   // selected place id
+  const drag = useRef(null);
+  const sized = useMemo(() => places.filter(hasCoords), [places]);
+
+  /* keep the canvas size in state (tiles depend on it) */
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* initial view: zoom that fits every place on screen */
+  useEffect(() => {
+    if (view || !sized.length || !size.w) return;
+    const lats = sized.map((p) => p.lat);
+    const lons = sized.map((p) => p.lon);
+    let z = 2;
+    for (z = 18; z > 2; z--) {
+      const wpx = Math.abs(lonToPx(Math.max(...lons), z) - lonToPx(Math.min(...lons), z));
+      const hpx = Math.abs(latToPx(Math.min(...lats), z) - latToPx(Math.max(...lats), z));
+      if (wpx <= size.w * 0.82 && hpx <= size.h * 0.82) break;
+    }
+    setView({
+      lat: clampN((Math.min(...lats) + Math.max(...lats)) / 2, -85, 85),
+      lon: (Math.min(...lons) + Math.max(...lons)) / 2,
+      z,
+    });
+  }, [view, sized, size]);
+
+  /* wheel zoom around the cursor (non-passive so we can preventDefault) */
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const sx = e.clientX - el.getBoundingClientRect().left - el.clientWidth / 2;
+      const sy = e.clientY - el.getBoundingClientRect().top - el.clientHeight / 2;
+      setView((v) => {
+        if (!v) return v;
+        const z2 = clampN(v.z + (e.deltaY < 0 ? 1 : -1), 2, 18);
+        if (z2 === v.z) return v;
+        const gpx = lonToPx(v.lon, v.z) + sx;
+        const gpy = latToPx(v.lat, v.z) + sy;
+        const f = Math.pow(2, z2 - v.z);
+        return {
+          lon: pxToLon(gpx * f - sx, z2),
+          lat: clampN(pxToLat(gpy * f - sy, z2), -85, 85),
+          z: z2,
+        };
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  /* drag to pan; a tap on empty map closes the popup */
+  const onDown = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest && e.target.closest('.map-pop, .map-ctrl, .map-pin')) return;
+    drag.current = { x: e.clientX, y: e.clientY, lat: view?.lat, lon: view?.lon, moved: 0 };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onMove = (e) => {
+    const d = drag.current;
+    if (!d || !view) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    d.moved = Math.max(d.moved, Math.abs(dx) + Math.abs(dy));
+    const cpx = lonToPx(d.lon, view.z) - dx;
+    const cpy = latToPx(d.lat, view.z) - dy;
+    setView((v) => v && ({ ...v, lon: pxToLon(cpx, view.z), lat: clampN(pxToLat(cpy, view.z), -85, 85) }));
+  };
+  const onUp = () => {
+    const d = drag.current;
+    if (d && d.moved < 6) setPick(null);
+    drag.current = null;
+  };
+
+  if (!sized.length) {
+    return html`<${Empty} big="🗺" title="nothing to map yet!" sub="add a place with a location and it'll appear here.">`;
+  }
+  if (!view) return html`<div class="map-view loading">🗺 unfolding the map…</div>`;
+
+  const n = Math.pow(2, view.z);
+  const left = lonToPx(view.lon, view.z) - size.w / 2;
+  const top = latToPx(view.lat, view.z) - size.h / 2;
+  const tx0 = Math.floor(left / 256);
+  const tx1 = Math.floor((left + size.w) / 256);
+  const ty0 = Math.floor(top / 256);
+  const ty1 = Math.floor((top + size.h) / 256);
+
+  const tiles = [];
+  for (let tx = tx0; tx <= tx1; tx++) {
+    const wx = ((tx % n) + n) % n; // wrap the world
+    for (let ty = ty0; ty <= ty1; ty++) {
+      if (ty < 0 || ty >= n) continue;
+      tiles.push(html`
+        <img key=${`${view.z}/${tx}/${ty}`} class="map-tile" alt=""
+          src=${`https://tile.openstreetmap.org/${view.z}/${wx}/${ty}.png`}
+          draggable="false" loading="lazy"
+          style=${{ left: `${Math.round(tx * 256 - left)}px`, top: `${Math.round(ty * 256 - top)}px` }} />`);
+    }
+  }
+
+  const picked = pick ? places.find((p) => p.id === pick) : null;
+
+  return html`
+    <div class="map-wrap">
+      <div class="map-view" ref=${boxRef}
+        onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${onUp}>
+        ${tiles}
+        ${sized.map((p) => html`
+          <button key=${p.id} type="button"
+            class=${'map-pin' + (pick === p.id ? ' on' : '') + (p.status === 'want' ? ' dream' : '')}
+            style=${{ left: `${Math.round(lonToPx(p.lon, view.z) - left)}px`, top: `${Math.round(latToPx(p.lat, view.z) - top)}px` }}
+            title=${p.name} onClick=${() => setPick(p.id)}>
+            <span class="map-pin-label">${p.name}</span>
+            <span class="map-pin-dot" aria-hidden="true">${catOf(p.category).emoji}</span>
+          </button>`)}
+        <div class="map-ctrl">
+          <button type="button" title="zoom in" onClick=${() => setView((v) => v && { ...v, z: clampN(v.z + 1, 2, 18) })}>＋</button>
+          <button type="button" title="zoom out" onClick=${() => setView((v) => v && { ...v, z: clampN(v.z - 1, 2, 18) })}>－</button>
+        </div>
+        ${picked ? html`
+          <div class="map-pop">
+            ${picked.photos.length
+              ? html`<button type="button" class="pop-cover" aria-label=${`photos of ${picked.name}`}
+                  style=${{ backgroundImage: `url("${picked.photos[0]}")` }} onClick=${() => act.photo(picked.id, 0)} />`
+              : null}
+            <div class="pop-body">
+              <p class="pop-title">${catOf(picked.category).emoji} <b>${picked.name}</b></p>
+              <p class="meta">📍 ${picked.city}${picked.country ? `, ${picked.country}` : ''}${picked.date ? ` · ${formatDate(picked.date)}` : ''} · ${whoText(picked)}</p>
+              ${picked.notes ? html`<p class="pop-notes">${picked.notes}</p>` : null}
+              <div class="pop-actions">
+                ${picked.photos.length
+                  ? html`<button type="button" class="btn mini" onClick=${() => act.photo(picked.id, 0)}>📷 photos</button>` : null}
+                <button type="button" class="btn mini" onClick=${() => act.edit(picked.id)}>✏️ edit</button>
+                <a class="btn mini" target="_blank" rel="noopener"
+                  href=${`https://www.openstreetmap.org/?mlat=${picked.lat}&mlon=${picked.lon}#${view.z}/${picked.lat}/${picked.lon}`}>↗ osm</a>
+              </div>
+            </div>
+          </div>` : null}
+      </div>
+      <p class="map-hint">drag to pan · scroll to zoom · tap a pin 📍</p>
+    </div>`;
 }
 
 function Lightbox({ photos, name, idx, onNav, onClose }) {
@@ -953,6 +1137,8 @@ function App() {
       <//>`;
   } else if (view.mode === 'timeline') {
     content = html`<${Timeline} visible=${visible} act=${act} />`;
+  } else if (view.mode === 'map') {
+    content = html`<${MapView} places=${visible} act=${act} />`;
   } else {
     const groupsAll = groupByCity(places);
     const groupsVis = groupByCity(visible);
@@ -969,7 +1155,7 @@ function App() {
   const lbPlace = lb ? places.find((p) => p.id === lb.placeId) : null;
 
   const TABS = [['all', '🌏 all'], ['visited', '✨ been'], ['want', '💭 someday']];
-  const VIEWS = [['grid', '🗂 by city'], ['timeline', '📜 timeline']];
+  const VIEWS = [['grid', '🗂 by city'], ['timeline', '📜 timeline'], ['map', '🗺 map']];
 
   return html`
     <div>
